@@ -1,0 +1,158 @@
+Purpose of Introspection Endpoint:
+The introspection endpoint allows a client (or resource server) to verify the validity of a token (typically an access token). It provides information about whether the token is active, its scope, and other related claims. This is useful when a resource server needs to validate tokens without being able to decode JWTs directly (e.g., opaque tokens).
+
+Steps for Developing introspection.rs:
+Create the Introspection Request Structure:
+
+We will need a request structure that contains the token to be introspected and possibly the token_type_hint (if the client wants to specify whether it's an access or refresh token).
+Check Token Validity:
+
+The introspection endpoint should check whether the token is valid and not expired.
+If it is a JWT, we can decode and validate its claims.
+If it's opaque, we will need to retrieve its details from the storage.
+Return an Introspection Response:
+
+The introspection response will return the token's active status, its scope, expiration, and other claims if active. If inactive, it returns that information.
+
+
+
+
+Looking at the code in your `src/core` directory, everything seems to be progressing well with the various components necessary for an OAuth 2.0 authorization server, particularly the PKCE, token generation, and handling authorization flows. You also have rate-limiting, MFA (TOTP), and robust error handling with custom error types. Now, we can move forward with developing the `introspection.rs` endpoint for token introspection.
+
+### **Purpose of Introspection Endpoint:**
+The introspection endpoint allows a client (or resource server) to verify the validity of a token (typically an access token). It provides information about whether the token is active, its scope, and other related claims. This is useful when a resource server needs to validate tokens without being able to decode JWTs directly (e.g., opaque tokens).
+
+---
+
+### **Steps for Developing `introspection.rs`:**
+
+1. **Create the Introspection Request Structure:**
+   - We will need a request structure that contains the token to be introspected and possibly the `token_type_hint` (if the client wants to specify whether it's an access or refresh token).
+
+2. **Check Token Validity:**
+   - The introspection endpoint should check whether the token is valid and not expired.
+   - If it is a JWT, we can decode and validate its claims.
+   - If it's opaque, we will need to retrieve its details from the storage.
+
+3. **Return an Introspection Response:**
+   - The introspection response will return the token's active status, its scope, expiration, and other claims if active. If inactive, it returns that information.
+
+### **Skeleton for `introspection.rs`:**
+
+Here’s a basic skeleton to get started with the introspection endpoint:
+
+
+### **Details on Implementation:**
+
+1. **IntrospectionRequest:**
+   - Contains the token to be introspected, and an optional `token_type_hint` field for indicating whether it is an access token or a refresh token. While this is optional, it can help improve performance if the server can directly target the appropriate token type.
+
+2. **IntrospectionResponse:**
+   - This response structure returns details like the token's validity (`active: bool`), its scope, expiration time, and claims (e.g., `client_id`, `sub`, etc.).
+   - If the token is invalid, `active` will be `false`, and other fields might be `None`.
+
+3. **Token Validation:**
+   - You already have the `validate_token` function in `JwtTokenGenerator`. We use that to check if the token is valid, not revoked, and within the correct expiry.
+   - In case of an opaque token, you will use the token store (Redis, memory, or SQL) to retrieve its details.
+
+4. **JWT Validation and Claims Extraction:**
+   - For JWT tokens, we decode the token and extract claims using the `validate_token` function. The scope, subject (`sub`), and other claims can be included in the response if the token is active.
+
+5. **Error Handling:**
+   - The error handling leverages the `TokenError` enum, where errors such as `InvalidToken` can be returned if the token is not valid.
+
+---
+
+### **Things to Consider:**
+- **Opaque Tokens:** 
+   If you're supporting opaque tokens, the introspection endpoint will need to query the storage system (e.g., Redis or SQL) to fetch the token details rather than decoding it directly.
+   
+- **Token Revocation:** 
+   If the token has been revoked, the response should mark it as inactive (`active: false`).
+   
+- **Token Scope Validation:** 
+   Ensure that the token's scope is properly validated when serving protected resources, and return the correct scope in the introspection response.
+
+---
+
+### **Next Steps:**
+1. **Complete the Introspection Logic:**
+   Implement checks for both JWT and opaque tokens, and query the storage for opaque tokens if applicable.
+
+2. **Test the Introspection Flow:**
+   Add tests under `tests/introspection_tests.rs` to validate the introspection endpoint's behavior for active, inactive, expired, and revoked tokens.
+
+3. **Security Considerations:**
+   Make sure the introspection endpoint is properly secured and can only be accessed by authorized clients (e.g., using client authentication).
+
+---
+
+This should give you a solid starting point to implement the introspection endpoint and integrate it into the larger authorization flow!
+
+
+
+Summary of the Status of the Introspection Endpoint in RustifyAuth:
+The Introspection Endpoint is mostly implemented, with the following key elements completed or in progress:
+
+What is Complete:
+Core Introspection Logic:
+
+The endpoint takes a token (access or refresh) and an optional token type hint.
+It checks the validity of the token using the TokenGenerator (validate_token method) to ensure that the token is active and has not expired.
+Inactive Token Response:
+
+If the token is revoked, invalid, or expired, the introspection function returns an inactive response ({ "active": false }).
+The inactive_token_response function ensures a consistent response format for inactive tokens.
+Token Revocation Handling:
+
+The function checks if a token has been revoked using the TokenStore. If the token is found in the revoked list, it returns an inactive response.
+Token Metadata:
+
+For active tokens, the response includes important metadata such as:
+scope: The token's authorized scopes.
+client_id: The client that issued the token.
+sub: The subject (user) the token is associated with.
+exp: The expiration time of the token (in seconds since the epoch).
+Handling token_type_hint:
+
+If a token type hint is provided (e.g., refresh_token), the introspection logic optimizes the search by checking the relevant token type (e.g., focusing on refresh tokens).
+Client Authentication (Partially Implemented):
+
+Basic client authentication logic is in place to ensure only authorized clients can introspect tokens.
+The function accepts client credentials (client ID and secret) and validates them using a helper function (authenticate_client).
+What Needs Completion:
+Testing:
+
+Unit Tests and Integration Tests are needed to ensure the introspection endpoint works as expected in various scenarios (valid tokens, revoked tokens, expired tokens, etc.).
+Full Client Authentication:
+
+Although basic client authentication logic is present, you may want to enhance it. For example, implement a secure client authentication mechanism (e.g., using OAuth 2.0 client credentials or another secure method).
+Expiration Handling:
+
+While token expiration is handled within validate_token, ensure that it properly interacts with the introspection response and returns inactive tokens when expired.
+Optimizations and Edge Cases:
+
+Consider adding optimizations or handling for specific edge cases, such as:
+Handling different token types more robustly if multiple types (opaque tokens, JWTs) are used.
+Handling tokens with missing metadata or invalid claims more gracefully.
+Remaining Tasks:
+Unit Testing:
+
+Write tests to cover:
+Active tokens: Verifying that a valid token returns an active response with the correct metadata.
+Revoked tokens: Ensuring revoked tokens are marked as inactive.
+Expired tokens: Validating that expired tokens are marked as inactive.
+Client authentication: Tests for introspection with and without valid client credentials.
+Integration Testing:
+
+Test the complete introspection flow in an integrated environment to verify that it works as expected when interacting with Redis (for token revocation) and other components.
+Documentation:
+
+Provide usage examples and documentation for the introspection endpoint, including expected request/response formats and authentication requirements for clients.
+Status Overview:
+Core functionality: Implemented and functional.
+Revocation handling: Integrated with TokenStore (both in-memory and Redis).
+Security: Basic client authentication is in place; this can be expanded.
+Testing: Needs to be developed for unit and integration testing.
+Documentation: Should be finalized and added for easier use.
+Let me know if you'd like to proceed with testing or further enhancements!

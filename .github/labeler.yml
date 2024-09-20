@@ -1,0 +1,14 @@
+# Labeling rules
+"src/*":
+  - "feature"
+
+"docs/*":
+  - "documentation"
+
+"tests/*":
+  - "tests"
+
+# Add a hacktoberfest label during October
+"**":
+  - "hacktoberfest-accepted"
+

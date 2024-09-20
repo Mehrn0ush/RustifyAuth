@@ -1,0 +1,24 @@
+[package]
+name = "rustify-auth"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.0.1"
+async-trait = "0.1.82"
+base64 = "0.22.1"
+constant_time_eq = "0.3.1"
+dotenv = "0.15.0"
+jsonwebtoken = "8.1.1"
+otpauth = "0.5.1"
+rand = "0.8.5"
+redis = "0.22.0"
+rocket = { version = "0.5.0-rc.2", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.128"
+sha2 = "0.10.8"
+sqlx = { version = "0.8.2", features = ["postgres"] }
+thiserror = "1.0.63"
+time = "0.3.36"
+tokio = { version = "1", features = ["full"] }
+warp = "0.3.7"
