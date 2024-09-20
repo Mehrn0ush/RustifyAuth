@@ -28,6 +28,7 @@
 .github/workflows/secrets.env
 .env
 *.env
+.pem
 
 # ---> Logs
 logs
@@ -55,10 +56,4 @@ Thumbs.db
 *.old
 *.orig
 
-# --> note
-area_for_improvement.txt	
-clientNote.txt			
-introspection.txt		
-note.txt			
-redis_note.txt			
-token_handling_note.txt
+
