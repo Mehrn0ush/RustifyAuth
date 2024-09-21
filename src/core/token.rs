@@ -888,7 +888,7 @@ pub async fn token_endpoint(
     auth_code_flow: Arc<Mutex<AuthorizationCodeFlow>>, // For Authorization Code Flow
     rate_limiter: Arc<RateLimiter>,                    // To protect against rate limiting
     token_generator: Arc<dyn TokenGenerator>,          // Token generation (JWT, Opaque)
-    _token_store: Arc<dyn TokenStore>,                  // Token Store (In-Memory, Redis)
+    _token_store: Arc<dyn TokenStore>,                 // Token Store (In-Memory, Redis)
 ) -> Result<TokenResponse, TokenError> {
     // Step 1: Validate common fields depending on the grant type
     match req.grant_type.as_str() {
@@ -1663,28 +1663,30 @@ cwIDAQAB
     fn test_redis_token_revoked() -> Result<(), TokenError> {
         // Setup Redis connection and RedisTokenStore instance.
         let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-        let store = RedisTokenStore { conn: Arc::new(Mutex::new(client.get_connection().unwrap())) };
-    
+        let store = RedisTokenStore {
+            conn: Arc::new(Mutex::new(client.get_connection().unwrap())),
+        };
+
         // Store a revoked token.
         store.store_revoked_token("test_token".to_string(), 3600)?;
-    
+
         // Check if the token is revoked.
         assert_eq!(store.is_token_revoked("test_token")?, true);
-    
+
         Ok(())
     }
-    
+
     #[test]
     fn test_redis_cleanup_expired_tokens() -> Result<(), TokenError> {
         // Setup RedisTokenStore and check Redis cleanup.
         let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-        let store = RedisTokenStore { conn: Arc::new(Mutex::new(client.get_connection().unwrap())) };
-    
+        let store = RedisTokenStore {
+            conn: Arc::new(Mutex::new(client.get_connection().unwrap())),
+        };
+
         // Check that Redis handles cleanup automatically.
         store.cleanup_expired_tokens()?;
-    
+
         Ok(())
     }
-    
-
 }
