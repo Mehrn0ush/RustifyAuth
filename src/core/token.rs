@@ -1,8 +1,6 @@
 use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::types::{TokenError, TokenRequest, TokenResponse};
 use crate::security::rate_limit::RateLimiter;
-use crate::storage::memory::TokenStore as MemoryTokenStore;
-use crate::storage::memory::TokenStore as StorageTokenStore;
 use dotenv::dotenv;
 use jsonwebtoken::{
     decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
@@ -139,14 +137,14 @@ impl RedisTokenStore {
         println!("Revoked token in Redis: {}, TTL: {}", token, ttl);
         Ok(())
     }
-
+    #[allow(dead_code)]
     fn is_token_revoked(&self, token: &str) -> Result<bool, TokenError> {
         // Handle possible errors when locking the connection and retrieving the token status.
         let mut conn = self.conn.lock().map_err(|_| TokenError::InternalError)?; // Lock the connection
         let result: Option<String> = conn.get(token).map_err(|_| TokenError::InternalError)?; // Get token status
         Ok(result.as_deref() == Some("revoked")) // Return true if the token is revoked
     }
-
+    #[allow(dead_code)]
     fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
         // Redis automatically handles expired keys, so no manual cleanup is needed.
         println!("Redis automatically cleans up expired tokens.");
@@ -187,6 +185,7 @@ impl InMemoryTokenStore {
         }
     }
 
+    #[allow(dead_code)]
     fn is_token_revoked(&self, token: &str) -> Result<bool, TokenError> {
         let revoked_tokens = self.get_revoked_tokens()?;
         if let Some(&exp) = revoked_tokens.get(token) {
@@ -231,18 +230,6 @@ impl InMemoryTokenStore {
         Ok(())
     }
 }
-/*
-// Helper function for retrieving the current time
-fn get_current_time() -> Result<u64, TokenError> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .map_err(|e| {
-            eprintln!("Failed to retrieve current time: {:?}", e);
-            TokenError::InternalError
-        })
-}
-*/
 
 fn get_current_time() -> Result<u64, TokenError> {
     SystemTime::now()
@@ -328,7 +315,7 @@ impl TokenStore for InMemoryTokenStore {
 }
 
 // Helper function for getting token
-
+#[allow(dead_code)]
 fn get_token_config() -> (Option<String>, String, String) {
     dotenv().ok(); // Load the .env file
 
@@ -522,7 +509,7 @@ impl JwtTokenGenerator {
     pub fn validate_token(
         &self,
         token: &str,
-        expected_aud: Option<&str>,
+        _expected_aud: Option<&str>,
         expected_sub: &str,
         required_scope: &str,
     ) -> Result<TokenData<Claims>, TokenError> {
@@ -600,6 +587,7 @@ impl JwtTokenGenerator {
         Ok(token_data)
     }
 
+    #[allow(dead_code)]
     // Revoke a JWT access token
     fn revoke_jwt_access_token(&self, token: &str) -> Result<(), TokenError> {
         let exp = self.get_token_exp(token)?; // Get token expiration time
@@ -740,7 +728,7 @@ impl TokenGenerator for JwtTokenGenerator {
     fn validate_token(
         &self,
         token: &str,
-        expected_aud: Option<&str>,
+        _expected_aud: Option<&str>,
         expected_sub: &str,
         required_scope: &str,
     ) -> Result<TokenData<Claims>, TokenError> {
@@ -849,9 +837,9 @@ impl TokenGenerator for OpaqueTokenGenerator {
     // Handle refresh token exchange for opaque tokens
     fn exchange_refresh_token(
         &self,
-        refresh_token: &str,
-        client_id: &str,
-        scope: &str,
+        _refresh_token: &str,
+        _client_id: &str,
+        _scope: &str,
     ) -> Result<(String, String), TokenError> {
         // In this case, we may not need to handle refresh tokens for opaque tokens,
         // but here is a placeholder to comply with the trait.
@@ -900,7 +888,7 @@ pub async fn token_endpoint(
     auth_code_flow: Arc<Mutex<AuthorizationCodeFlow>>, // For Authorization Code Flow
     rate_limiter: Arc<RateLimiter>,                    // To protect against rate limiting
     token_generator: Arc<dyn TokenGenerator>,          // Token generation (JWT, Opaque)
-    token_store: Arc<dyn TokenStore>,                  // Token Store (In-Memory, Redis)
+    _token_store: Arc<dyn TokenStore>,                  // Token Store (In-Memory, Redis)
 ) -> Result<TokenResponse, TokenError> {
     // Step 1: Validate common fields depending on the grant type
     match req.grant_type.as_str() {
@@ -1670,4 +1658,33 @@ cwIDAQAB
             assert!(revoked_tokens.contains_key(&token_valid));
         }
     }
+
+    #[test]
+    fn test_redis_token_revoked() -> Result<(), TokenError> {
+        // Setup Redis connection and RedisTokenStore instance.
+        let client = redis::Client::open("redis://127.0.0.1/").unwrap();
+        let store = RedisTokenStore { conn: Arc::new(Mutex::new(client.get_connection().unwrap())) };
+    
+        // Store a revoked token.
+        store.store_revoked_token("test_token".to_string(), 3600)?;
+    
+        // Check if the token is revoked.
+        assert_eq!(store.is_token_revoked("test_token")?, true);
+    
+        Ok(())
+    }
+    
+    #[test]
+    fn test_redis_cleanup_expired_tokens() -> Result<(), TokenError> {
+        // Setup RedisTokenStore and check Redis cleanup.
+        let client = redis::Client::open("redis://127.0.0.1/").unwrap();
+        let store = RedisTokenStore { conn: Arc::new(Mutex::new(client.get_connection().unwrap())) };
+    
+        // Check that Redis handles cleanup automatically.
+        store.cleanup_expired_tokens()?;
+    
+        Ok(())
+    }
+    
+
 }
