@@ -24,4 +24,3 @@ pub trait StorageBackend {
     /// A `Result<Option<ClientData>, OAuthError>`.
     fn get_client_by_id(&self, client_id: &str) -> Result<Option<ClientData>, OAuthError>;
 }
-

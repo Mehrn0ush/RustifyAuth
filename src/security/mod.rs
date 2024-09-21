@@ -1,6 +1,6 @@
 pub mod encryption;
 pub mod mfa;
-pub mod rate_limit;  
+pub mod rate_limit;
 use crate::error::OAuthError;
 
 /// `ClientData` will store client-related information (e.g., ID, secret, allowed scopes).

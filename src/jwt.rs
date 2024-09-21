@@ -1,7 +1,7 @@
-use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
-use serde::{Serialize};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use crate::error::OAuthError;
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use serde::Serialize;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize)]
 struct Claims {
@@ -24,11 +24,14 @@ pub fn generate_jwt(
     client_id: String,
     scopes: Vec<&str>,
     now: SystemTime,
-    expiry_duration: Duration
+    expiry_duration: Duration,
 ) -> Result<String, OAuthError> {
     // Convert `SystemTime` to UNIX timestamp
     let now_unix = now.duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let exp_unix = (now + expiry_duration).duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let exp_unix = (now + expiry_duration)
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
 
     // Create the claims (data to include in the JWT)
     let claims = Claims {
@@ -42,10 +45,11 @@ pub fn generate_jwt(
 
     // Encode the JWT using RS256 algorithm, mapping any potential errors to `OAuthError::TokenGenerationError`
     let token = encode(
-        &Header::new(Algorithm::RS256), 
-        &claims, 
-        &EncodingKey::from_rsa_pem(private_key).map_err(|_| OAuthError::TokenGenerationError)? // Map potential error loading the key
-    ).map_err(|_| OAuthError::TokenGenerationError)?; // Map error from JWT encoding to OAuthError
+        &Header::new(Algorithm::RS256),
+        &claims,
+        &EncodingKey::from_rsa_pem(private_key).map_err(|_| OAuthError::TokenGenerationError)?, // Map potential error loading the key
+    )
+    .map_err(|_| OAuthError::TokenGenerationError)?; // Map error from JWT encoding to OAuthError
 
-    Ok(token)  // Return the generated token
+    Ok(token) // Return the generated token
 }

@@ -1,19 +1,19 @@
-use std::collections::{HashMap, HashSet};
-use crate::core::authorization::AuthorizationCode;
 use super::{ClientData, StorageBackend};
-use crate::error::OAuthError; 
+use crate::core::authorization::AuthorizationCode;
+use crate::error::OAuthError;
+use std::collections::{HashMap, HashSet};
 
 // MemoryCodeStore for storing authorization codes in memory
 pub struct MemoryCodeStore {
-    codes: HashMap<String, AuthorizationCode>,  // Keyed by authorization code
-    revoked_codes: HashSet<String>,  // Set to track revoked authorization codes
+    codes: HashMap<String, AuthorizationCode>, // Keyed by authorization code
+    revoked_codes: HashSet<String>,            // Set to track revoked authorization codes
 }
 
 impl MemoryCodeStore {
     pub fn new() -> Self {
         MemoryCodeStore {
             codes: HashMap::new(),
-            revoked_codes: HashSet::new(),  // Initialize the set for revoked codes
+            revoked_codes: HashSet::new(), // Initialize the set for revoked codes
         }
     }
 }
@@ -30,12 +30,12 @@ pub trait CodeStore {
 impl CodeStore for MemoryCodeStore {
     // Store the authorization code in memory
     fn store_code(&mut self, code: AuthorizationCode) {
-        self.codes.insert(code.code.clone(), code);  // Store authorization code
+        self.codes.insert(code.code.clone(), code); // Store authorization code
     }
 
     // Retrieve the authorization code if it exists
     fn retrieve_code(&self, code: &str) -> Option<AuthorizationCode> {
-        self.codes.get(code).cloned()  // Return a clone of the stored code
+        self.codes.get(code).cloned() // Return a clone of the stored code
     }
 
     // Revoke the authorization code, returning true if successful
@@ -56,7 +56,7 @@ impl CodeStore for MemoryCodeStore {
 
 // MemoryTokenStore for managing token revocation in memory
 pub struct MemoryTokenStore {
-    revoked_access_tokens: HashSet<String>,  // Set of revoked access tokens
+    revoked_access_tokens: HashSet<String>, // Set of revoked access tokens
     revoked_refresh_tokens: HashSet<String>, // Set of revoked refresh tokens
 }
 
@@ -74,7 +74,6 @@ pub trait TokenStore {
     fn revoke_access_token(&mut self, token: &str) -> bool;
     fn revoke_refresh_token(&mut self, token: &str) -> bool;
     fn is_token_revoked(&self, token: &str) -> bool;
-    
 }
 
 // Implement TokenStore for MemoryTokenStore
@@ -82,13 +81,13 @@ impl TokenStore for MemoryTokenStore {
     // Revoke an access token
     fn revoke_access_token(&mut self, token: &str) -> bool {
         let inserted = self.revoked_access_tokens.insert(token.to_string());
-        inserted || self.revoked_access_tokens.contains(token)  // Return true if it's revoked
+        inserted || self.revoked_access_tokens.contains(token) // Return true if it's revoked
     }
 
     // Revoke a refresh token
     fn revoke_refresh_token(&mut self, token: &str) -> bool {
         let inserted = self.revoked_refresh_tokens.insert(token.to_string());
-        inserted || self.revoked_refresh_tokens.contains(token)  // Return true if it's revoked
+        inserted || self.revoked_refresh_tokens.contains(token) // Return true if it's revoked
     }
 
     // Check if either the access or refresh token has been revoked
@@ -120,7 +119,7 @@ impl StorageBackend for MemoryStorage {
         // Fetch client from the HashMap
         match self.clients.get(client_id) {
             Some(client_data) => Ok(Some(client_data.clone())), // Return a cloned version of `ClientData`
-            None => Ok(None), // Client not found
+            None => Ok(None),                                   // Client not found
         }
     }
 }

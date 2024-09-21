@@ -1,8 +1,7 @@
-use sha2::{Sha256, Digest};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use thiserror::Error;  // For better error handling
 use constant_time_eq::constant_time_eq;
-
+use sha2::{Digest, Sha256};
+use thiserror::Error; // For better error handling
 
 // Define the minimum PKCE verifier length according to the OAuth 2.1 spec
 const MIN_VERIFIER_LENGTH: usize = 43;
@@ -15,9 +14,8 @@ pub enum PkceError {
     #[error("Invalid characters in verifier")]
     InvalidVerifierCharacters,
     #[error("PKCE challenge does not match the verifier")]
-    InvalidVerifier,  // Add a descriptive error message here
+    InvalidVerifier, // Add a descriptive error message here
 }
-
 
 // Function to validate if a PKCE verifier meets the length and character requirements
 fn validate_verifier(verifier: &str) -> Result<(), PkceError> {
@@ -27,7 +25,10 @@ fn validate_verifier(verifier: &str) -> Result<(), PkceError> {
     }
 
     // Check that the verifier contains only valid characters (alphanumeric and "-._~")
-    if !verifier.chars().all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c)) {
+    if !verifier
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c))
+    {
         return Err(PkceError::InvalidVerifierCharacters);
     }
 
@@ -61,4 +62,3 @@ pub fn validate_pkce_challenge(challenge: &str, verifier: &str) -> Result<(), Pk
         Err(PkceError::InvalidVerifier)
     }
 }
-

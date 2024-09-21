@@ -1,17 +1,16 @@
-use crate::storage::{StorageBackend, ClientData};
 use crate::error::OAuthError;
-use crate::jwt::generate_jwt; 
-use std::time::{SystemTime, Duration};
-
+use crate::jwt::generate_jwt;
+use crate::storage::{ClientData, StorageBackend};
+use std::time::{Duration, SystemTime};
 
 /// Validates client credentials by checking against storage (e.g., Redis, SQL).
-/// 
+///
 /// `client_id` - The ID of the client trying to authenticate.
 /// `client_secret` - The client's secret for authentication.
 pub fn validate_client_credentials(
-    client_id: &str, 
-    client_secret: &str, 
-    storage: &dyn StorageBackend // Abstracts storage (e.g., memory, SQL, Redis)
+    client_id: &str,
+    client_secret: &str,
+    storage: &dyn StorageBackend, // Abstracts storage (e.g., memory, SQL, Redis)
 ) -> Result<ClientData, OAuthError> {
     // Fetch client data from storage, which returns a Result<Option<ClientData>, OAuthError>
     match storage.get_client_by_id(client_id) {
@@ -25,7 +24,7 @@ pub fn validate_client_credentials(
         }
         Ok(None) => {
             // Client not found in storage
-            Err(OAuthError::InvalidClient) 
+            Err(OAuthError::InvalidClient)
         }
         Err(e) => {
             // Handle any storage-level errors (e.g., database connection failure)
@@ -33,8 +32,6 @@ pub fn validate_client_credentials(
         }
     }
 }
-
-
 
 /// Structure for the token response as per OAuth 2.0.
 pub struct TokenResponse {
@@ -47,11 +44,11 @@ pub struct TokenResponse {
 ///
 /// `client` - The validated client data.
 /// `scopes` - The scopes requested by the client.
-/// 
+///
 /// Returns `TokenResponse` with the generated token or an error.
 pub fn issue_token(
-    client: &ClientData, 
-    scopes: &[&str] // Requested scopes by client
+    client: &ClientData,
+    scopes: &[&str], // Requested scopes by client
 ) -> Result<TokenResponse, OAuthError> {
     // Check if requested scopes are allowed for this client
     for scope in scopes {
@@ -67,7 +64,7 @@ pub fn issue_token(
     // Generate JWT (or any token mechanism you want to use)
     let token = generate_jwt(
         client.client_id.clone(),
-        scopes.to_vec(),  // Include scopes in the JWT
+        scopes.to_vec(), // Include scopes in the JWT
         now,
         expiry_duration,
     )?;
@@ -75,17 +72,16 @@ pub fn issue_token(
     // Return the token response
     Ok(TokenResponse {
         access_token: token,
-        token_type: "Bearer".to_string(),  // OAuth 2.0 standard type
-        expires_in: 3600,  // Expiry time in seconds (1 hour)
+        token_type: "Bearer".to_string(), // OAuth 2.0 standard type
+        expires_in: 3600,                 // Expiry time in seconds (1 hour)
     })
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*;  // Import the module where `validate_client_credentials` is defined
+    use super::*; // Import the module where `validate_client_credentials` is defined
     use std::collections::HashMap;
-    
+
     // Define a mock storage backend for testing purposes
     struct MockStorage {
         clients: HashMap<String, ClientData>,
@@ -114,7 +110,7 @@ mod tests {
     #[test]
     fn test_valid_client_credentials() {
         let mut storage = MockStorage::new();
-        
+
         // Add a client with valid credentials
         let client = ClientData {
             client_id: "valid_client".to_string(),
@@ -137,7 +133,7 @@ mod tests {
     #[test]
     fn test_invalid_client_secret() {
         let mut storage = MockStorage::new();
-        
+
         // Add a client with valid credentials
         let client = ClientData {
             client_id: "valid_client".to_string(),
@@ -157,7 +153,7 @@ mod tests {
     // Test case: Non-existing client
     #[test]
     fn test_non_existing_client() {
-        let storage = MockStorage::new();  // No clients added
+        let storage = MockStorage::new(); // No clients added
 
         // Call the function with a non-existing client
         let result = validate_client_credentials("non_existing_client", "some_secret", &storage);

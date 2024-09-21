@@ -5,7 +5,7 @@ pub enum TokenError {
     // Add relevant errors for token revocation
 }
 
-#[derive(Debug, PartialEq)]  // Add PartialEq here
+#[derive(Debug, PartialEq)] // Add PartialEq here
 pub enum OAuthError {
     InvalidClient,
     InvalidScope,

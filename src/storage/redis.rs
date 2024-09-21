@@ -1,45 +1,43 @@
-use redis::{Commands, Connection, RedisError};
-use serde_json;
-use serde::{Serialize, Deserialize};
-use crate::core::authorization::AuthorizationCode;
-use crate::storage::{CodeStore, TokenStore};
-use std::cell::RefCell;
 use super::{ClientData, StorageBackend};
+use crate::core::authorization::AuthorizationCode;
 use crate::error::OAuthError;
+use crate::storage::{CodeStore, TokenStore};
 use redis::Client;
-
-
-
+use redis::{Commands, Connection, RedisError};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::cell::RefCell;
 
 pub struct RedisCodeStore {
-    conn: RefCell<Connection>,  // Use RefCell for interior mutability
+    conn: RefCell<Connection>, // Use RefCell for interior mutability
 }
 
 impl RedisCodeStore {
     pub fn new(conn: Connection) -> Self {
         RedisCodeStore {
-            conn: RefCell::new(conn),  // Wrap the connection in RefCell for mutability
+            conn: RefCell::new(conn), // Wrap the connection in RefCell for mutability
         }
     }
 
     // Retrieve an AuthorizationCode from Redis
-    fn retrieve_code_from_redis(&self, code: &str) -> Result<Option<AuthorizationCode>, RedisError> {
-        let mut conn = self.conn.borrow_mut();  // Mutably borrow the Redis connection for the `get` operation
-        let result: Result<String, RedisError> = conn.get(code);  // Fetch the code from Redis
+    fn retrieve_code_from_redis(
+        &self,
+        code: &str,
+    ) -> Result<Option<AuthorizationCode>, RedisError> {
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `get` operation
+        let result: Result<String, RedisError> = conn.get(code); // Fetch the code from Redis
 
         match result {
             Ok(data) => {
                 // Deserialize the JSON string back into an AuthorizationCode object
-                serde_json::from_str(&data)
-                    .map(Some)
-                    .map_err(|err| {
-                        eprintln!("Failed to deserialize AuthorizationCode: {}", err);
-                        RedisError::from((redis::ErrorKind::TypeError, "Deserialization Error"))
-                    })
+                serde_json::from_str(&data).map(Some).map_err(|err| {
+                    eprintln!("Failed to deserialize AuthorizationCode: {}", err);
+                    RedisError::from((redis::ErrorKind::TypeError, "Deserialization Error"))
+                })
             }
             Err(err) => {
                 eprintln!("Error fetching code from Redis: {}", err);
-                Err(err)  // Propagate the Redis error
+                Err(err) // Propagate the Redis error
             }
         }
     }
@@ -48,7 +46,7 @@ impl RedisCodeStore {
 impl CodeStore for RedisCodeStore {
     // Store the authorization code in Redis
     fn store_code(&mut self, code: AuthorizationCode) {
-        let mut conn = self.conn.borrow_mut();  // Mutably borrow the Redis connection for the `set` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `set` operation
         let result: Result<(), RedisError> = conn.set(
             code.code.clone(),
             serde_json::to_string(&code).unwrap_or_else(|_| String::new()), // Serialize AuthorizationCode
@@ -61,13 +59,13 @@ impl CodeStore for RedisCodeStore {
 
     // Retrieve an authorization code from Redis
     fn retrieve_code(&self, code: &str) -> Option<AuthorizationCode> {
-        self.retrieve_code_from_redis(code).ok().flatten()  // Use the safe version and handle errors gracefully
+        self.retrieve_code_from_redis(code).ok().flatten() // Use the safe version and handle errors gracefully
     }
 
     // Revoke (delete) the authorization code from Redis
     fn revoke_code(&mut self, code: &str) -> bool {
-        let mut conn = self.conn.borrow_mut();  // Mutably borrow the Redis connection for the `del` operation
-        let result: Result<(), RedisError> = conn.del(code);  // Delete the code from Redis
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `del` operation
+        let result: Result<(), RedisError> = conn.del(code); // Delete the code from Redis
 
         if let Err(err) = result {
             eprintln!("Error revoking code in Redis: {}", err);
@@ -81,25 +79,25 @@ impl CodeStore for RedisCodeStore {
     fn is_code_revoked(&self, code: &str) -> bool {
         let mut conn = self.conn.borrow_mut();
         let result: Result<bool, RedisError> = conn.exists(code);
-       // result.unwrap_or(false)  // Return false if the check fails
-       match result {
-        Ok(exists) => !exists,  // If code exists, it is not revoked, so return false
-        Err(err) => {
-            eprintln!("Error checking if code is revoked: {}", err);
-            false
+        // result.unwrap_or(false)  // Return false if the check fails
+        match result {
+            Ok(exists) => !exists, // If code exists, it is not revoked, so return false
+            Err(err) => {
+                eprintln!("Error checking if code is revoked: {}", err);
+                false
+            }
         }
-    }
     }
 }
 
 pub struct RedisTokenStore {
-    conn: RefCell<Connection>,  // Use RefCell for interior mutability
+    conn: RefCell<Connection>, // Use RefCell for interior mutability
 }
 
 impl RedisTokenStore {
     pub fn new(conn: Connection) -> Self {
         RedisTokenStore {
-            conn: RefCell::new(conn),  // Initialize connection inside RefCell for mutability
+            conn: RefCell::new(conn), // Initialize connection inside RefCell for mutability
         }
     }
 }
@@ -107,7 +105,7 @@ impl RedisTokenStore {
 impl TokenStore for RedisTokenStore {
     // Revoke access token by adding it to the revoked set
     fn revoke_access_token(&mut self, token: &str) -> bool {
-        let mut conn = self.conn.borrow_mut();  // Mutably borrow the Redis connection for the `sadd` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `sadd` operation
         let result: Result<(), RedisError> = conn.sadd("revoked_access_tokens", token);
 
         if let Err(err) = result {
@@ -120,7 +118,7 @@ impl TokenStore for RedisTokenStore {
 
     // Revoke refresh token by adding it to the revoked set
     fn revoke_refresh_token(&mut self, token: &str) -> bool {
-        let mut conn = self.conn.borrow_mut();  // Mutably borrow the Redis connection for the `sadd` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `sadd` operation
         let result: Result<(), RedisError> = conn.sadd("revoked_refresh_tokens", token);
 
         if let Err(err) = result {
@@ -133,9 +131,13 @@ impl TokenStore for RedisTokenStore {
 
     // Check if an access or refresh token is revoked
     fn is_token_revoked(&self, token: &str) -> bool {
-        let mut conn = self.conn.borrow_mut();  // Mutably borrow the Redis connection for the `sismember` operation
-        let access_revoked: bool = conn.sismember("revoked_access_tokens", token).unwrap_or(false);
-        let refresh_revoked: bool = conn.sismember("revoked_refresh_tokens", token).unwrap_or(false);
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `sismember` operation
+        let access_revoked: bool = conn
+            .sismember("revoked_access_tokens", token)
+            .unwrap_or(false);
+        let refresh_revoked: bool = conn
+            .sismember("revoked_refresh_tokens", token)
+            .unwrap_or(false);
 
         access_revoked || refresh_revoked
     }
@@ -158,7 +160,10 @@ impl RedisStorage {
 
 impl StorageBackend for RedisStorage {
     fn get_client_by_id(&self, client_id: &str) -> Result<Option<ClientData>, OAuthError> {
-        let mut conn = self.redis_client.get_connection().map_err(|_| OAuthError::TokenGenerationError)?;
+        let mut conn = self
+            .redis_client
+            .get_connection()
+            .map_err(|_| OAuthError::TokenGenerationError)?;
 
         // Fetch client information from Redis (assuming it's stored as a hash)
         let secret: String = conn.hget(client_id, "secret").unwrap_or_default();
@@ -177,8 +182,6 @@ impl StorageBackend for RedisStorage {
         Ok(Some(client_data))
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -230,5 +233,3 @@ mod tests {
         assert!(token_store.is_token_revoked(refresh_token));
     }
 }
-
-
