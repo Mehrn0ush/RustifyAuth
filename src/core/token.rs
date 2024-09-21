@@ -3,26 +3,24 @@ use crate::core::types::{TokenError, TokenRequest, TokenResponse};
 use crate::security::rate_limit::RateLimiter;
 use crate::storage::memory::TokenStore as MemoryTokenStore;
 use crate::storage::memory::TokenStore as StorageTokenStore;
+use dotenv::dotenv;
 use jsonwebtoken::{
     decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use dotenv::dotenv;
 use redis::Client;
 use redis::{Commands, Connection};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::env;
-
-
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Debug)]
 pub struct Token {
     pub value: String,
-    pub expiration: u64,  
+    pub expiration: u64,
 }
 
 pub struct RedisTokenStore {
@@ -41,7 +39,6 @@ impl RedisTokenStore {
 }
 
 impl TokenStore for RedisTokenStore {
-
     fn store_refresh_token(
         &self,
         token: &str,
@@ -56,7 +53,7 @@ impl TokenStore for RedisTokenStore {
             return Ok(());
         }
         let ttl = exp - current_time;
-        
+
         let mut conn = self.conn.lock().map_err(|_| TokenError::InternalError)?;
         redis::cmd("SETEX")
             .arg(token)
@@ -123,7 +120,6 @@ impl TokenStore for RedisTokenStore {
     }
 }
 
-
 fn calculate_ttl(exp: u64, now: u64) -> usize {
     exp.saturating_sub(now) as usize
 }
@@ -158,7 +154,6 @@ impl RedisTokenStore {
     }
 }
 
-
 pub trait TokenStore: Send + Sync {
     fn store_refresh_token(
         &self,
@@ -187,7 +182,7 @@ impl InMemoryTokenStore {
     // Constructor method for InMemoryTokenStore
     pub fn new() -> Self {
         Self {
-            revoked_tokens: Mutex::new(HashMap::new()), 
+            revoked_tokens: Mutex::new(HashMap::new()),
             active_tokens: Mutex::new(HashMap::new()),
         }
     }
@@ -196,10 +191,10 @@ impl InMemoryTokenStore {
         let revoked_tokens = self.get_revoked_tokens()?;
         if let Some(&exp) = revoked_tokens.get(token) {
             if get_current_time()? <= exp {
-                return Ok(true);  // Token is revoked but not expired
+                return Ok(true); // Token is revoked but not expired
             }
         }
-        Ok(false)  // Token is not revoked or has already expired
+        Ok(false) // Token is not revoked or has already expired
     }
 
     // Helper function to lock and get the revoked tokens map
@@ -218,27 +213,25 @@ impl InMemoryTokenStore {
         })
     }
 
+    fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
+        let current_time = get_current_time()?;
+        let mut active_tokens = self.get_active_tokens()?;
+        let mut revoked_tokens = self.get_revoked_tokens()?;
 
-fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
-    let current_time = get_current_time()?;
-    let mut active_tokens = self.get_active_tokens()?;
-    let mut revoked_tokens = self.get_revoked_tokens()?;
+        active_tokens.retain(|_, token| {
+            if token.expiration > current_time {
+                true // Keep valid tokens
+            } else {
+                println!("Removing expired token: {}", token.value);
+                revoked_tokens.insert(token.value.clone(), token.expiration); // Move expired token to revoked
+                false // Remove expired tokens from active_tokens
+            }
+        });
 
-    active_tokens.retain(|_, token| {
-        if token.expiration > current_time {
-            true  // Keep valid tokens
-        } else {
-            println!("Removing expired token: {}", token.value);
-            revoked_tokens.insert(token.value.clone(), token.expiration);  // Move expired token to revoked
-            false  // Remove expired tokens from active_tokens
-        }
-    });
-
-    Ok(())
+        Ok(())
+    }
 }
-
-}
-/* 
+/*
 // Helper function for retrieving the current time
 fn get_current_time() -> Result<u64, TokenError> {
     SystemTime::now()
@@ -250,7 +243,6 @@ fn get_current_time() -> Result<u64, TokenError> {
         })
 }
 */
-
 
 fn get_current_time() -> Result<u64, TokenError> {
     SystemTime::now()
@@ -266,7 +258,6 @@ fn is_token_expired(exp: u64, now: u64) -> bool {
     exp <= now
 }
 
-
 impl TokenStore for InMemoryTokenStore {
     fn store_refresh_token(
         &self,
@@ -276,7 +267,13 @@ impl TokenStore for InMemoryTokenStore {
         exp: u64,
     ) -> Result<(), TokenError> {
         let mut active_tokens = self.get_active_tokens()?;
-        active_tokens.insert(token.to_string(), Token { value: token.to_string(), expiration: exp });
+        active_tokens.insert(
+            token.to_string(),
+            Token {
+                value: token.to_string(),
+                expiration: exp,
+            },
+        );
         Ok(())
     }
 
@@ -285,7 +282,6 @@ impl TokenStore for InMemoryTokenStore {
         token: &str,
         _client_id: &str,
     ) -> Result<(String, u64), TokenError> {
-
         let active_tokens = self.get_active_tokens()?;
         if let Some(token_data) = active_tokens.get(token) {
             if token_data.expiration > get_current_time()? {
@@ -297,7 +293,7 @@ impl TokenStore for InMemoryTokenStore {
             Err(TokenError::InvalidToken)
         }
     }
-    
+
     fn revoke_token(&self, token: String, exp: u64) -> Result<(), TokenError> {
         let now = get_current_time()?;
 
@@ -311,7 +307,6 @@ impl TokenStore for InMemoryTokenStore {
         println!("Revoked token: {}, exp: {}", token, exp);
         Ok(())
     }
-
 
     fn is_token_revoked(&self, token: &str) -> Result<bool, TokenError> {
         let revoked_tokens = self.get_revoked_tokens()?;
@@ -330,11 +325,6 @@ impl TokenStore for InMemoryTokenStore {
     fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
         self.cleanup_expired_tokens()
     }
-
-
-
-
-    
 }
 
 // Helper function for getting token
@@ -380,7 +370,6 @@ pub trait TokenGenerator {
         client_id: &str,
         scope: &str,
     ) -> Result<(String, String), TokenError>;
-    
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
@@ -720,7 +709,7 @@ impl TokenGenerator for JwtTokenGenerator {
 
         // Step 5: Store the new refresh token
         let exp = get_current_time()? + self.refresh_token_lifetime.as_secs();
-        let new_exp = get_current_time()? + self.refresh_token_lifetime.as_secs(); 
+        let new_exp = get_current_time()? + self.refresh_token_lifetime.as_secs();
 
         self.token_store
             .store_refresh_token(&new_refresh_token, client_id, &user_id, new_exp)?;
@@ -745,9 +734,9 @@ impl TokenGenerator for JwtTokenGenerator {
         user_id: &str,
         scope: &str,
     ) -> Result<String, TokenError> {
-        self.generate_refresh_token_internal(client_id, user_id, scope) 
+        self.generate_refresh_token_internal(client_id, user_id, scope)
     }
-    
+
     fn validate_token(
         &self,
         token: &str,
@@ -1034,9 +1023,8 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::Mutex;
-    use std::time::Duration;
     use std::thread::sleep;
-
+    use std::time::Duration;
 
     // Sample RSA private key for signing JWT (for testing purposes)
     const RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
@@ -1170,39 +1158,42 @@ cwIDAQAB
         fn is_token_revoked(&self, token: &str) -> Result<bool, TokenError> {
             let tokens = self.tokens.lock().unwrap();
             let contains = tokens.contains_key(token);
-            println!("is_token_revoked: token '{}', contains: {}", token, contains);
-            Ok(!contains)  // Token is revoked if it's not in the store
+            println!(
+                "is_token_revoked: token '{}', contains: {}",
+                token, contains
+            );
+            Ok(!contains) // Token is revoked if it's not in the store
         }
 
-    
         fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
-            let current_time = get_current_time()?;  // Get the current time in seconds
-        
-            let mut expired_tokens = Vec::new();  // Collect expired tokens to remove later
-        
+            let current_time = get_current_time()?; // Get the current time in seconds
+
+            let mut expired_tokens = Vec::new(); // Collect expired tokens to remove later
+
             // Lock the token store for thread safety
             let mut tokens = self.tokens.lock().map_err(|_| TokenError::InternalError)?;
-        
+
             // Iterate over the tokens in the store
             for (token, &exp) in tokens.iter() {
-                println!("Checking token: {}, Exp: {}, Now: {}", token, exp, current_time);
+                println!(
+                    "Checking token: {}, Exp: {}, Now: {}",
+                    token, exp, current_time
+                );
                 if exp <= current_time {
                     // Token has expired, so mark it for removal
                     expired_tokens.push(token.clone());
                 }
             }
-        
+
             // Now, remove all expired tokens and mark them as revoked
             for token in expired_tokens {
-                tokens.remove(&token);  // Remove expired token from active store
+                tokens.remove(&token); // Remove expired token from active store
                 println!("Removing expired token: {}", token);
             }
-        
+
             Ok(())
         }
-    
     }
-    
 
     // Helper function to get current time
     fn get_current_time() -> Result<u64, TokenError> {
@@ -1214,10 +1205,10 @@ cwIDAQAB
     }
     #[test]
     fn test_exchange_refresh_token_success() -> Result<(), TokenError> {
-        let private_key = include_bytes!("../private_key.pem").to_vec();  
-        let public_key = include_bytes!("../public_key.pem").to_vec();    
+        let private_key = include_bytes!("../private_key.pem").to_vec();
+        let public_key = include_bytes!("../public_key.pem").to_vec();
         let token_store = Arc::new(MockTokenStore::new());
-    
+
         let generator = JwtTokenGenerator::new(
             private_key,
             public_key,
@@ -1226,33 +1217,35 @@ cwIDAQAB
             Duration::from_secs(7200),
             token_store.clone(),
         );
-    
+
         // Mock refresh token creation
         let refresh_token = "mock_refresh_token";
         let client_id = "client_id";
         let scope = "read write";
-    
+
         // Store refresh token with valid expiration
-        let exp = get_current_time()? + 7200;  // Set expiration for the refresh token
+        let exp = get_current_time()? + 7200; // Set expiration for the refresh token
         token_store.store_refresh_token(refresh_token, client_id, "user_id", exp)?;
-    
+
         println!("Stored refresh token: {}, exp: {}", refresh_token, exp);
-    
+
         // Act: Exchange the refresh token for new tokens
         let result = generator.exchange_refresh_token(refresh_token, client_id, scope);
-    
+
         assert!(result.is_ok(), "Failed to exchange refresh token");
         let (access_token, new_refresh_token) = result.unwrap();
-    
+
         println!("Generated access token: {}", access_token);
         println!("Generated new refresh token: {}", new_refresh_token);
-    
+
         assert!(!access_token.is_empty(), "Access token should not be empty");
-        assert!(!new_refresh_token.is_empty(), "New refresh token should not be empty");
-    
+        assert!(
+            !new_refresh_token.is_empty(),
+            "New refresh token should not be empty"
+        );
+
         Ok(())
     }
-    
 
     #[test]
     fn test_exchange_refresh_token_with_invalid_token() {
@@ -1316,54 +1309,69 @@ cwIDAQAB
         );
     }
 
-    
     #[test]
     fn test_cleanup_expired_tokens() -> Result<(), TokenError> {
         let private_key = vec![];
         let public_key = vec![];
         let token_store = Arc::new(MockTokenStore::new());
-    
+
         let generator = JwtTokenGenerator::new(
             private_key,
             public_key,
             "issuer".to_string(),
-            Duration::from_secs(3600),  // Access token lifetime (1 hour)
-            Duration::from_secs(7200),  // Refresh token lifetime (2 hours)
+            Duration::from_secs(3600), // Access token lifetime (1 hour)
+            Duration::from_secs(7200), // Refresh token lifetime (2 hours)
             token_store.clone(),
         );
-    
+
         let expired_token = "expired_token";
         let valid_token = "valid_token";
         let client_id = "client_id";
-        
+
         // Get the current time in seconds since UNIX epoch
         let current_time = get_current_time()?;
-    
+
         // Store an expired token (expired 100 seconds ago)
         token_store.store_refresh_token(expired_token, client_id, "user_id", current_time - 100)?;
-    
+
         // Store a valid token that expires in 2 hours (7200 seconds from now)
         token_store.store_refresh_token(valid_token, client_id, "user_id", current_time + 7200)?;
-    
+
         println!("Before cleanup:");
-        println!("Expired token exists: {}", token_store.is_token_revoked(expired_token)?);
-        println!("Valid token exists: {}", token_store.is_token_revoked(valid_token)?);
-    
+        println!(
+            "Expired token exists: {}",
+            token_store.is_token_revoked(expired_token)?
+        );
+        println!(
+            "Valid token exists: {}",
+            token_store.is_token_revoked(valid_token)?
+        );
+
         // Perform the cleanup
         token_store.cleanup_expired_tokens()?;
-    
+
         // After cleanup, the expired token should be revoked, and the valid token should not be revoked
-        assert!(token_store.is_token_revoked(expired_token)?, "Expired token should be revoked");
-        assert!(!token_store.is_token_revoked(valid_token)?, "Valid token should not be revoked");
-    
+        assert!(
+            token_store.is_token_revoked(expired_token)?,
+            "Expired token should be revoked"
+        );
+        assert!(
+            !token_store.is_token_revoked(valid_token)?,
+            "Valid token should not be revoked"
+        );
+
         println!("After cleanup:");
-        println!("Expired token exists: {}", token_store.is_token_revoked(expired_token)?);
-        println!("Valid token exists: {}", token_store.is_token_revoked(valid_token)?);
-    
+        println!(
+            "Expired token exists: {}",
+            token_store.is_token_revoked(expired_token)?
+        );
+        println!(
+            "Valid token exists: {}",
+            token_store.is_token_revoked(valid_token)?
+        );
+
         Ok(())
     }
-    
- 
 
     // Test for generating JWT access tokens
     #[test]
@@ -1398,55 +1406,56 @@ cwIDAQAB
         );
     }
 
-// Test for validating a valid JWT token
-#[test]
-fn test_validate_jwt_token() -> Result<(), TokenError> {
-    let private_key = include_bytes!("../private_key.pem").to_vec();  // Load your RSA private key
-    let public_key = include_bytes!("../public_key.pem").to_vec();    // Load your RSA public key
+    // Test for validating a valid JWT token
+    #[test]
+    fn test_validate_jwt_token() -> Result<(), TokenError> {
+        let private_key = include_bytes!("../private_key.pem").to_vec(); // Load your RSA private key
+        let public_key = include_bytes!("../public_key.pem").to_vec(); // Load your RSA public key
 
-    // Create a token store (in-memory for the purpose of the test)
-    let token_store = Arc::new(InMemoryTokenStore::new());
+        // Create a token store (in-memory for the purpose of the test)
+        let token_store = Arc::new(InMemoryTokenStore::new());
 
-    // Create the JWT token generator with the private and public keys
-    let jwt_generator = JwtTokenGenerator::new(
-        private_key,
-        public_key,
-        "issuer".to_string(),             // Issuer of the token
-        Duration::from_secs(3600),        // Access token lifetime
-        Duration::from_secs(7200),        // Refresh token lifetime
-        token_store.clone(),
-    );
+        // Create the JWT token generator with the private and public keys
+        let jwt_generator = JwtTokenGenerator::new(
+            private_key,
+            public_key,
+            "issuer".to_string(),      // Issuer of the token
+            Duration::from_secs(3600), // Access token lifetime
+            Duration::from_secs(7200), // Refresh token lifetime
+            token_store.clone(),
+        );
 
-    // Generate a valid access token
-    let valid_token = jwt_generator
-        .generate_access_token("client_id", "user_id", "read:documents")
-        .unwrap();
+        // Generate a valid access token
+        let valid_token = jwt_generator
+            .generate_access_token("client_id", "user_id", "read:documents")
+            .unwrap();
 
-    // Ensure the token is not revoked before validation
-    assert!(
-        !token_store.is_token_revoked(&valid_token)?,
-        "Newly generated token should not be revoked."
-    );
+        // Ensure the token is not revoked before validation
+        assert!(
+            !token_store.is_token_revoked(&valid_token)?,
+            "Newly generated token should not be revoked."
+        );
 
-    // Validate the token (no audience, but check subject and scope)
-    let result = jwt_generator.validate_token(
-        &valid_token,
-        None,               // No audience expected, so we pass None
-        "user_id",          // Expected subject (user_id in the token)
-        "read:documents",   // Required scope (matching what was generated)
-    );
+        // Validate the token (no audience, but check subject and scope)
+        let result = jwt_generator.validate_token(
+            &valid_token,
+            None,             // No audience expected, so we pass None
+            "user_id",        // Expected subject (user_id in the token)
+            "read:documents", // Required scope (matching what was generated)
+        );
 
-    // Assert that the token validation succeeded
-    assert!(result.is_ok(), "JWT validation should succeed for a valid token.");
+        // Assert that the token validation succeeded
+        assert!(
+            result.is_ok(),
+            "JWT validation should succeed for a valid token."
+        );
 
-    Ok(())
-}
-
+        Ok(())
+    }
 
     // Test for validating a token with incorrect subject
     #[test]
     fn test_validate_expired_jwt_token() {
-
         let jwt_generator = setup_jwt_generator_with_short_expiry(); // Short expiry (1 second)
 
         // Generate a short-lived token
@@ -1480,7 +1489,6 @@ fn test_validate_jwt_token() -> Result<(), TokenError> {
         assert_eq!(result.unwrap_err(), TokenError::ExpiredToken);
     }
 
-
     // Test for generating and validating opaque tokens
     #[test]
     fn test_generate_opaque_access_token() {
@@ -1507,7 +1515,6 @@ fn test_validate_jwt_token() -> Result<(), TokenError> {
         );
     }
 
-
     #[test]
     fn test_validate_invalid_signature_jwt_token() {
         let jwt_generator = setup_jwt_generator(); // Normal JWT setup
@@ -1532,7 +1539,6 @@ fn test_validate_jwt_token() -> Result<(), TokenError> {
         // Assert that the result is an error and the error is InvalidSignature
         assert_eq!(result.unwrap_err(), TokenError::InvalidSignature);
     }
-
 
     #[test]
     fn test_cleanup_expired_tokens_in_memory() {
@@ -1664,5 +1670,4 @@ fn test_validate_jwt_token() -> Result<(), TokenError> {
             assert!(revoked_tokens.contains_key(&token_valid));
         }
     }
-
 }
