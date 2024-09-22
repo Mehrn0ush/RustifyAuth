@@ -2,6 +2,7 @@ pub mod memory;
 pub mod redis;
 pub mod sql;
 use crate::error::OAuthError;
+pub mod client;
 
 pub use memory::{CodeStore, TokenStore};
 

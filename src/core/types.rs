@@ -6,7 +6,7 @@ pub struct TokenResponse {
     pub refresh_token: String,
     pub token_type: String,
     pub expires_in: u64,
-    pub scope: Option<String>, // Add this line to store the scope
+    pub scope: Option<String>,
 }
 
 // Token error types used across modules
@@ -20,9 +20,9 @@ pub enum TokenError {
     InvalidPKCEChallenge,
     InternalError,
     InvalidToken,
-    RateLimited,          // New error for rate-limiting
-    MissingFields,        // New error for missing fields
-    InvalidTokenTypeHint, // Add this variant for token revocation
+    RateLimited,
+    MissingFields,
+    InvalidTokenTypeHint,
     InsufficientScope,
     ExpiredToken,
     InvalidSignature,
@@ -41,4 +41,6 @@ pub struct TokenRequest {
     pub redirect_uri: Option<String>,
     pub scope: Option<String>,
     pub pkce_verifier: Option<String>,
+    pub device_code: Option<String>, // For device flow
+    pub extra_params: Option<std::collections::HashMap<String, String>>, // For extension grants
 }

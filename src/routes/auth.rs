@@ -1,7 +1,16 @@
 use crate::authentication::{SessionManager, UserAuthenticator};
+use crate::core::authorization::AuthorizationCodeFlow;
+use crate::core::scopes::ScopeValidator;
+use crate::core::token::TokenGenerator;
+use crate::security::csrf::{validate_state, CsrfStore};
+use crate::security::pkce::validate_pkce;
+use crate::storage::client::{Client, ClientRepository};
+use crate::storage::CodeStore;
 use actix_web::{web, HttpResponse, Result};
 use serde::Deserialize;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
 
 #[derive(Deserialize)]
 pub struct AuthorizationRequest {
@@ -14,67 +23,103 @@ pub struct AuthorizationRequest {
     code_challenge_method: Option<String>,
 }
 
-pub async fn authorize<A: UserAuthenticator, S: SessionManager>(
+pub async fn authorize(
     query: web::Query<AuthorizationRequest>,
-    authenticator: web::Data<Arc<A>>,
-    session_manager: web::Data<Arc<S>>,
+    authenticator: web::Data<Arc<dyn UserAuthenticator>>,
+    session_manager: web::Data<Arc<dyn SessionManager>>,
+    client_repo: web::Data<Arc<dyn ClientRepository>>,
+    scope_validator: web::Data<Arc<ScopeValidator>>,
+    csrf_store: web::Data<Arc<CsrfStore>>,
+    code_store: web::Data<Arc<Mutex<dyn CodeStore>>>,
+    token_generator: web::Data<Arc<dyn TokenGenerator>>,
     req: actix_web::HttpRequest,
 ) -> Result<HttpResponse> {
-    // Validate the client information
-    if !is_valid_client(&query.client_id) {
-        return Ok(HttpResponse::BadRequest().body("Invalid client_id"));
-    }
+    // Define allowed scopes
+    let allowed_scopes = vec!["read".to_string(), "write".to_string()];
 
-    // Handle PKCE if provided
-    if query.code_challenge.is_some() && query.code_challenge_method.is_some() {
-        if !validate_pkce(&query.code_challenge, &query.code_challenge_method) {
+    // Step 1: Validate the client information
+    let client = match client_repo.get_client(&query.client_id) {
+        Some(client) => client,
+        None => return Ok(HttpResponse::BadRequest().body("Invalid client_id")),
+    };
+
+    // Step 2: Handle PKCE if provided (Optional for clients supporting PKCE)
+    if let (Some(code_challenge), Some(code_challenge_method)) =
+        (&query.code_challenge, &query.code_challenge_method)
+    {
+        if !validate_pkce(
+            &Some(code_challenge.clone()),
+            &Some(code_challenge_method.clone()),
+            &code_challenge,
+        ) {
             return Ok(HttpResponse::BadRequest().body("Invalid PKCE parameters"));
         }
     }
 
-    // State parameter to prevent CSRF
+    // Step 3: Validate CSRF state (state parameter)
     if let Some(state) = &query.state {
-        save_state(state);
+        let csrf_token = req
+            .headers()
+            .get("X-CSRF-Token")
+            .and_then(|v| v.to_str().ok());
+        if csrf_token.is_none() || !validate_state(&csrf_store, csrf_token.unwrap(), state) {
+            return Ok(HttpResponse::BadRequest().body("Invalid CSRF state"));
+        }
     }
 
-    // Redirect to login if the user is not authenticated
-    if !is_authenticated() {
-        return Ok(HttpResponse::Found().header("Location", "/login").finish());
+    // Step 4: Check if the user is authenticated via session
+    let session_cookie = req.cookie("session_id");
+    let user = if let Some(cookie) = session_cookie {
+        match session_manager.get_user_by_session(cookie.value()).await {
+            Ok(user) => user, // Directly retrieve user
+            Err(_) => return Ok(HttpResponse::Unauthorized().body("User not authenticated")),
+        }
+    } else {
+        return Ok(HttpResponse::Unauthorized().body("Session cookie missing"));
+    };
+
+    // Step 5: Validate the requested scope
+    if let Some(scope) = &query.scope {
+        if !scope_validator.validate(&query.client_id, scope).await {
+            return Ok(HttpResponse::BadRequest().body("Invalid or unauthorized scope"));
+        }
     }
 
-    // Validate the requested scope
-    if !validate_scopes(&query.client_id, &query.scope) {
-        return Ok(HttpResponse::BadRequest().body("Invalid scope"));
-    }
+    // Step 6: Generate an authorization code
+    let authorization_code_flow = AuthorizationCodeFlow::new(
+        Arc::clone(&code_store), // Pass the Arc directly
+        Arc::clone(&token_generator),
+        Duration::from_secs(600), // Example lifetime
+        allowed_scopes.clone(),
+    );
 
-    // Authorization successful
-    Ok(HttpResponse::Ok().body("Authorization successful"))
-}
+    let authorization_code = match authorization_code_flow.generate_authorization_code(
+        &client.client_id,
+        &query.redirect_uri,
+        &user.id,
+        query
+            .scope
+            .clone()
+            .unwrap_or_else(|| "".to_string())
+            .as_str(),
+    ) {
+        Ok(code) => code,
+        Err(_) => {
+            return Ok(
+                HttpResponse::InternalServerError().body("Failed to generate authorization code")
+            )
+        }
+    };
 
-fn is_valid_client(client_id: &str) -> bool {
-    true // Replace with real client validation logic
-}
+    // Step 7: Redirect to the client's redirect URI with the authorization code
+    let redirect_url = format!(
+        "{}?code={}&state={}",
+        query.redirect_uri,
+        authorization_code.code,
+        query.state.clone().unwrap_or_else(|| "".to_string())
+    );
 
-fn validate_pkce(code_challenge: &Option<String>, code_challenge_method: &Option<String>) -> bool {
-    match code_challenge_method.as_deref() {
-        Some("S256") => true,
-        Some("plain") => true,
-        _ => false,
-    }
-}
-
-fn save_state(state: &str) {
-    println!("Saving state: {}", state);
-}
-
-fn validate_state(state: &str) -> bool {
-    true // Replace with real state validation logic
-}
-
-fn is_authenticated() -> bool {
-    false // Placeholder for real authentication logic
-}
-
-fn validate_scopes(client_id: &str, scope: &Option<String>) -> bool {
-    true // Replace with real scope validation logic
+    Ok(HttpResponse::Found()
+        .header("Location", redirect_url)
+        .finish())
 }

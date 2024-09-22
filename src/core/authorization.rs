@@ -31,10 +31,10 @@ pub enum AuthorizationError {
 
 // Struct for managing authorization code flow with PKCE and tokens
 pub struct AuthorizationCodeFlow {
-    pub code_store: Box<dyn CodeStore>, // Store for authorization codes
-    pub token_generator: Box<dyn TokenGenerator>, // Token generation (JWT or Opaque)
-    pub code_lifetime: Duration,        // Duration for code validity
-    pub allowed_scopes: Vec<String>,    // List of allowed scopes
+    pub code_store: Arc<Mutex<dyn CodeStore>>, // Store for authorization codes
+    pub token_generator: Arc<dyn TokenGenerator>, // Token generation (JWT or Opaque)
+    pub code_lifetime: Duration,               // Duration for code validity
+    pub allowed_scopes: Vec<String>,           // List of allowed scopes
 }
 
 // AuthorizationCode structure to represent and authorization code
@@ -56,6 +56,20 @@ impl From<PkceError> for TokenError {
 }
 
 impl AuthorizationCodeFlow {
+    pub fn new(
+        code_store: Arc<Mutex<dyn CodeStore>>,
+        token_generator: Arc<dyn TokenGenerator>, // Include token_generator here
+        code_lifetime: Duration,
+        allowed_scopes: Vec<String>,
+    ) -> Self {
+        AuthorizationCodeFlow {
+            code_store,
+            token_generator,
+            code_lifetime,
+            allowed_scopes,
+        }
+    }
+
     pub fn validate_pkce_challenge(
         stored_challenge: &str,
         verifier: &str,
@@ -85,7 +99,7 @@ impl AuthorizationCodeFlow {
 
     // Generates and stores an authorization code along with the PKCE challenge
     pub fn generate_authorization_code(
-        &mut self,
+        &self,
         client_id: &str,
         redirect_uri: &str,
         pkce_verifier: &str,
@@ -110,15 +124,15 @@ impl AuthorizationCodeFlow {
             expires_at,
         };
 
-        // Store the authorization code in the code store
-        self.code_store.store_code(authorization_code.clone());
+        let mut code_store = self.code_store.lock().unwrap();
+        code_store.store_code(authorization_code.clone());
 
         Ok(authorization_code)
     }
 
     // Exchanges an authorization code for tokens (access & refresh)
     pub fn exchange_code_for_token(
-        &mut self,
+        &self,
         code: &str,
         pkce_verifier: &str,
     ) -> Result<TokenResponse, TokenError> {
@@ -126,8 +140,8 @@ impl AuthorizationCodeFlow {
             "Attempting to retrieve the authorization code for: {}",
             code
         );
-        // Retrieve stored authorization code
-        let stored_code = self.code_store.retrieve_code(code).ok_or_else(|| {
+        let mut code_store = self.code_store.lock().unwrap();
+        let stored_code = code_store.retrieve_code(code).ok_or_else(|| {
             eprintln!("InvalidGrant: Code not found.");
             TokenError::InvalidGrant
         })?;
@@ -135,8 +149,9 @@ impl AuthorizationCodeFlow {
             "Authorization code retrieved successfully: {:?}",
             stored_code
         );
+
         // If the code is revoked, return an error
-        if self.code_store.is_code_revoked(code) {
+        if code_store.is_code_revoked(code) {
             eprintln!("InvalidGrant: Code is revoked.");
             return Err(TokenError::InvalidGrant);
         }
@@ -148,8 +163,7 @@ impl AuthorizationCodeFlow {
         }
 
         // Validate the PKCE challenge
-        // validate_pkce_challenge(&stored_code.pkce_challenge, pkce_verifier)?;
-        // Validate the PKCE challenge
+
         match validate_pkce_challenge(&stored_code.pkce_challenge, pkce_verifier) {
             Ok(_) => eprintln!("PKCE validation succeeded."),
             Err(e) => {
@@ -157,23 +171,10 @@ impl AuthorizationCodeFlow {
                 return Err(TokenError::InvalidPKCEChallenge);
             }
         };
-        // Check if the old access token is revoked (if applicable)
-        // Assuming you are passing the old access token as part of the request (optional)
-        /*******************
-        let old_token = &stored_code.client_id;
-        if let Err(_) = self.token_generator.validate_token(
-            old_token,
-            None,
-            &stored_code.client_id,
-            &stored_code.scope
-        ) {
-            return Err(TokenError::InvalidGrant); // Deny if the old token is revoked
-        }
-        *********************/
 
         // Revoke the authorization code after successful use
 
-        let code_revoke_result = self.code_store.revoke_code(code);
+        let code_revoke_result = code_store.revoke_code(code);
         if !code_revoke_result {
             eprintln!("Code has already been used or revoked");
             return Err(TokenError::InvalidGrant); // The code was already used or revoked
@@ -343,21 +344,7 @@ impl TokenGenerator for MockTokenGenerator {
 
             Ok(TokenData {
                 header: Default::default(),
-                claims, /*: Claims   {
-                            sub: "user_id".to_string(),
-                            exp: (now + Duration::from_secs(3600))
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                            scope: Some("read:documents".to_string()),
-                            aud: Some("example_aud".to_string()),
-                            client_id: Some("example_client_id".to_string()),
-                            iat: now
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                            iss: Some("example_issuer".to_string()),
-                        }, */
+                claims,
             })
         } else {
             Err(TokenError::InvalidToken)
@@ -523,8 +510,8 @@ mod tests {
         // Declare and instantiate the token store
         let token_store = Arc::new(InMemoryTokenStore::new());
 
-        let code_store = MemoryCodeStore::new();
-        let token_generator = Box::new(JwtTokenGenerator {
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
+        let token_generator = Arc::new(JwtTokenGenerator {
             private_key: vec![],
             public_key: vec![],
             issuer: "test-issuer".to_string(),
@@ -537,7 +524,7 @@ mod tests {
         let allowed_scopes = vec!["read:documents".to_string(), "write:files".to_string()];
 
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(code_store),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -569,11 +556,11 @@ mod tests {
 
         let allowed_scopes = vec!["read:documents".to_string(), "write:files".to_string()];
 
-        let mut code_store = MemoryCodeStore::new();
-        let token_generator = Box::new(MockTokenGenerator);
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
+        let token_generator = Arc::new(MockTokenGenerator);
 
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(code_store),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -625,8 +612,8 @@ mod tests {
 
         // Create an in-memory token store
         let token_store = Arc::new(InMemoryTokenStore::new());
-
-        let token_generator = Box::new(JwtTokenGenerator {
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
+        let token_generator = Arc::new(JwtTokenGenerator {
             private_key: vec![], // Use your actual private key here
             public_key: vec![],
             issuer: "test-issuer".to_string(),
@@ -636,7 +623,7 @@ mod tests {
         });
 
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(MemoryCodeStore::new()),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(1), // Short lifetime
             allowed_scopes,
@@ -689,8 +676,8 @@ mod tests {
 
         // Create an in-memory token store
         let token_store = Arc::new(InMemoryTokenStore::new());
-
-        let token_generator = Box::new(JwtTokenGenerator {
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
+        let token_generator = Arc::new(JwtTokenGenerator {
             private_key: vec![], // Use your actual private key here
             public_key: vec![],
             issuer: "test-issuer".to_string(),
@@ -700,7 +687,7 @@ mod tests {
         });
 
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(MemoryCodeStore::new()),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -747,9 +734,9 @@ mod tests {
 
         // Create an in-memory token store
         let token_store = Arc::new(InMemoryTokenStore::new());
-
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
         // Instantiate the JWT token generator
-        let token_generator = Box::new(JwtTokenGenerator {
+        let token_generator = Arc::new(JwtTokenGenerator {
             private_key: vec![], // Use your actual private key here
             public_key: vec![],
             issuer: "test-issuer".to_string(),
@@ -759,7 +746,7 @@ mod tests {
         });
 
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(MemoryCodeStore::new()),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -785,18 +772,17 @@ mod tests {
         use std::thread::sleep;
 
         let allowed_scopes = vec!["read:documents".to_string(), "write:files".to_string()];
-
-        let mut code_store = MemoryCodeStore::new();
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
 
         // Create an instance of MockTokenGeneratorWithExpiry
-        let token_generator = MockTokenGeneratorWithExpiry::new(
+        let token_generator = Arc::new(MockTokenGeneratorWithExpiry::new(
             Duration::from_secs(1), // access_token_lifetime
             Duration::from_secs(2), // refresh_token_lifetime
-        );
+        )) as Arc<dyn TokenGenerator>; // Cast to Arc<dyn TokenGenerator>
 
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(code_store),
-            token_generator: Box::new(token_generator.clone()),
+            code_store,
+            token_generator: token_generator.clone(), // Clone the Arc here
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
         };
@@ -852,12 +838,12 @@ mod tests {
 
         // Initialize code_store and token_generator
 
-        let mut code_store = MemoryCodeStore::new();
-        let token_generator = Box::new(MockTokenGenerator);
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
+        let token_generator = Arc::new(MockTokenGenerator);
 
         // Creat auth_code_flow
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(code_store),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -908,14 +894,14 @@ mod tests {
 
         //Setiup code
 
-        let mut code_store = MemoryCodeStore::new();
-        let token_generator = Box::new(MockTokenGenerator);
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
+        let token_generator = Arc::new(MockTokenGenerator);
 
         // Define allowed scopes
         let allowed_scopes = vec!["read:documents".to_string(), "write:files".to_string()];
 
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(code_store),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -951,12 +937,12 @@ mod tests {
         // ... setup code ...
         let allowed_scopes = vec!["read:documents".to_string(), "write:files".to_string()];
         // Initialize code_store and token_generator
-        let mut code_store = MemoryCodeStore::new();
-        let token_generator = Box::new(MockTokenGenerator);
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
+        let token_generator = Arc::new(MockTokenGenerator);
 
         // Create auth_code_flow
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(code_store),
+            code_store,
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -988,19 +974,19 @@ mod tests {
     #[test]
     fn test_revoked_tokens() {
         use rand::{distributions::Alphanumeric, Rng};
-        use std::sync::Arc;
+        use std::sync::{Arc, Mutex};
         use std::time::Duration;
 
         // Setup: Define allowed scopes, code store, and token store
         let allowed_scopes = vec!["read:documents".to_string(), "write:files".to_string()];
 
-        let mut code_store = MemoryCodeStore::new();
+        let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
         let token_store = Arc::new(MemoryTokenStore::new());
-        let token_generator = Box::new(MockTokenGenerator::default());
+        let token_generator = Arc::new(MockTokenGenerator::default());
 
         // Create AuthorizationCodeFlow instance
         let mut auth_code_flow = AuthorizationCodeFlow {
-            code_store: Box::new(code_store),
+            code_store: code_store.clone(),
             token_generator,
             code_lifetime: Duration::from_secs(300),
             allowed_scopes,
@@ -1029,11 +1015,19 @@ mod tests {
             .expect("Failed to exchange code for tokens.");
 
         // Step 3: Revoke the authorization code
-        auth_code_flow.code_store.revoke_code(&auth_code.code);
-        assert!(
-            auth_code_flow.code_store.is_code_revoked(&auth_code.code),
-            "Code should be revoked."
-        );
+        {
+            let mut code_store = code_store.lock().unwrap(); // Lock the mutex to access the CodeStore
+            code_store.revoke_code(&auth_code.code);
+        }
+
+        // Check if the code is revoked
+        {
+            let code_store = code_store.lock().unwrap(); // Lock the mutex to access the CodeStore
+            assert!(
+                code_store.is_code_revoked(&auth_code.code),
+                "Code should be revoked."
+            );
+        }
 
         // Step 4: Attempt to exchange the revoked code, which should fail
         let second_token_response =

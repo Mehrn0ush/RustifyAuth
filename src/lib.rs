@@ -20,11 +20,11 @@ pub fn add(left: usize, right: usize) -> usize {
 }
 
 pub fn create_auth_code_flow() -> Arc<Mutex<AuthorizationCodeFlow>> {
-    let code_store = MemoryCodeStore::new(); // Initialize code store
-    let token_generator = Box::new(MockTokenGenerator); // Initialize token generator
+    let code_store = Arc::new(Mutex::new(MemoryCodeStore::new())); // Initialize code store
+    let token_generator = Arc::new(MockTokenGenerator); // Initialize token generator
 
     let auth_code_flow = AuthorizationCodeFlow {
-        code_store: Box::new(code_store),
+        code_store,
         token_generator,
         code_lifetime: Duration::from_secs(300), // Example lifetime
         allowed_scopes: vec!["read:documents".to_string(), "write:files".to_string()],

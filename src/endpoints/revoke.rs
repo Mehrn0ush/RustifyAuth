@@ -9,8 +9,8 @@ use warp::{reject, reply, Reply};
 // Token revocation request format (based on RFC 7009)
 #[derive(Debug, Deserialize)]
 pub struct RevokeTokenRequest {
-    token: String,                   // Token to be revoked (access or refresh)
-    token_type_hint: Option<String>, // Optional hint: "access_token" or "refresh_token"
+    pub token: String,                   // Token to be revoked (access or refresh)
+    pub token_type_hint: Option<String>, // Optional hint: "access_token" or "refresh_token"
 }
 
 // Token revocation response
