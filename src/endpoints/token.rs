@@ -5,10 +5,13 @@ use crate::core::types::TokenRequest;
 use crate::core::types::TokenResponse as AuthTokenResponse;
 use crate::core::types::{TokenError, TokenResponse};
 use crate::security::rate_limit::RateLimiter;
+use actix_web::{web, HttpResponse, Result};
 use crate::storage::memory::TokenStore;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use crate::core::types;
+use serde_json::json;
 
 // Improved token error types
 
@@ -116,5 +119,21 @@ pub async fn revoke_token_endpoint(
 #[derive(Debug, Deserialize)]
 pub struct RevokeTokenRequest {
     pub token: String,
-    pub token_type_hint: Option<String>, // Optional hint for token type
+    pub token_type_hint: Option<String>, 
+}
+
+pub async fn token(request: web::Form<TokenRequest>) -> Result<HttpResponse> {
+    if request.grant_type == "authorization_code" {
+        // Validate the authorization code and generate access/refresh tokens
+        Ok(HttpResponse::Ok().json({
+            json!({
+                "access_token": "some_access_token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+                "refresh_token": "some_refresh_token"
+            })
+        }))
+    } else {
+        Ok(HttpResponse::BadRequest().body("Unsupported grant type"))
+    }
 }

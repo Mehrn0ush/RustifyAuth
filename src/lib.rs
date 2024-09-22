@@ -6,11 +6,13 @@ use std::time::Duration;
 
 // Expose the core, security, endpoints, and storage modules
 pub mod core;
+pub mod authentication;
 pub mod endpoints;
 pub mod error;
 pub mod jwt;
 pub mod security;
 pub mod storage;
+pub mod routes;
 
 // Utility function for testing purposes or common calculations
 pub fn add(left: usize, right: usize) -> usize {
