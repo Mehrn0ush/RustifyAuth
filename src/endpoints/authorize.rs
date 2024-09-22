@@ -52,9 +52,7 @@ pub async fn authorize<A: UserAuthenticator, S: SessionManager>(
     if user.is_none() {
         // Save the original request parameters to redirect back after login
         // Redirect to login endpoint
-        return Ok(HttpResponse::Found()
-            .header("Location", "/login")
-            .finish());
+        return Ok(HttpResponse::Found().header("Location", "/login").finish());
     }
 
     // User is authenticated
@@ -89,13 +87,10 @@ fn is_valid_client(client_id: &str) -> bool {
     true
 }
 
-fn validate_pkce(
-    code_challenge: &Option<String>,
-    code_challenge_method: &Option<String>,
-) -> bool {
+fn validate_pkce(code_challenge: &Option<String>, code_challenge_method: &Option<String>) -> bool {
     // Validate PKCE according to RFC 7636
     match code_challenge_method.as_deref() {
-        Some("S256") => true, // Support S256 method
+        Some("S256") => true,  // Support S256 method
         Some("plain") => true, // Optionally support plain method
         _ => false,            // Invalid or unsupported method
     }
@@ -120,8 +115,6 @@ fn generate_authorization_code() -> String {
         .map(char::from)
         .collect()
 }
-
-
 
 /*
 Notes:

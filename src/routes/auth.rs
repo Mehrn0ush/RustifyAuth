@@ -1,4 +1,3 @@
-// src/routes/auth.rs
 use crate::authentication::{SessionManager, UserAuthenticator};
 use actix_web::{web, HttpResponse, Result};
 use serde::Deserialize;
@@ -40,9 +39,7 @@ pub async fn authorize<A: UserAuthenticator, S: SessionManager>(
 
     // Redirect to login if the user is not authenticated
     if !is_authenticated() {
-        return Ok(HttpResponse::Found()
-            .header("Location", "/login")
-            .finish());
+        return Ok(HttpResponse::Found().header("Location", "/login").finish());
     }
 
     // Validate the requested scope

@@ -1,17 +1,17 @@
 use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::pkce::validate_pkce_challenge;
+use crate::core::types;
 use crate::core::types::TokenError as AuthTokenError;
 use crate::core::types::TokenRequest;
 use crate::core::types::TokenResponse as AuthTokenResponse;
 use crate::core::types::{TokenError, TokenResponse};
 use crate::security::rate_limit::RateLimiter;
-use actix_web::{web, HttpResponse, Result};
 use crate::storage::memory::TokenStore;
+use actix_web::{web, HttpResponse, Result};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
-use crate::core::types;
 use serde_json::json;
+use std::sync::{Arc, Mutex};
 
 // Improved token error types
 
@@ -119,7 +119,7 @@ pub async fn revoke_token_endpoint(
 #[derive(Debug, Deserialize)]
 pub struct RevokeTokenRequest {
     pub token: String,
-    pub token_type_hint: Option<String>, 
+    pub token_type_hint: Option<String>,
 }
 
 pub async fn token(request: web::Form<TokenRequest>) -> Result<HttpResponse> {
