@@ -1,5 +1,6 @@
 use super::{ClientData, StorageBackend};
 use crate::core::authorization::AuthorizationCode;
+use crate::core::types::TokenError;
 use crate::error::OAuthError;
 use crate::storage::{CodeStore, TokenStore};
 use redis::Client;
@@ -116,7 +117,25 @@ impl TokenStore for RedisTokenStore {
         }
     }
 
-    // Revoke refresh token by adding it to the revoked set
+    fn store_refresh_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError> {
+        let mut conn = self.conn.borrow_mut();
+        let key = format!("refresh_token:{}", token);
+        let value = serde_json::json!({
+            "client_id": client_id,
+            "user_id": user_id,
+            "exp": exp,
+        });
+        conn.set_ex::<_, _, ()>(key, value.to_string(), exp as usize)
+            .unwrap();
+        Ok(())
+    }
+
     fn revoke_refresh_token(&mut self, token: &str) -> bool {
         let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `sadd` operation
         let result: Result<(), RedisError> = conn.sadd("revoked_refresh_tokens", token);
@@ -127,6 +146,36 @@ impl TokenStore for RedisTokenStore {
         } else {
             true
         }
+    }
+
+    fn validate_refresh_token(
+        &mut self,
+        token: &str,
+        client_id: &str,
+    ) -> Result<(String, u64), TokenError> {
+        let mut conn = self.conn.borrow_mut();
+        let key = format!("refresh_token:{}", token);
+        let result: Option<String> = conn.get(&key).unwrap();
+
+        if let Some(data) = result {
+            let parsed: serde_json::Value = serde_json::from_str(&data).unwrap();
+            let stored_client_id = parsed["client_id"].as_str().unwrap().to_string(); // Convert to String
+            let exp = parsed["exp"].as_u64().unwrap();
+
+            if stored_client_id == client_id.to_string() {
+                Ok((stored_client_id, exp))
+            } else {
+                Err(TokenError::InvalidClient)
+            }
+        } else {
+            Err(TokenError::InvalidToken)
+        }
+    }
+
+    fn is_refresh_token_revoked(&self, token: &str) -> bool {
+        let mut conn = self.conn.borrow_mut();
+        conn.sismember("revoked_refresh_tokens", token)
+            .unwrap_or(false)
     }
 
     // Check if an access or refresh token is revoked
@@ -140,6 +189,25 @@ impl TokenStore for RedisTokenStore {
             .unwrap_or(false);
 
         access_revoked || refresh_revoked
+    }
+
+    fn rotate_refresh_token(
+        &mut self,
+        old_token: &str,
+        new_token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError> {
+        {
+            let mut conn = self.conn.borrow_mut();
+        }
+        // Revoke the old refresh token
+        if !self.revoke_refresh_token(old_token) {
+            return Err(TokenError::InvalidToken);
+        }
+        // Store the new refresh token
+        self.store_refresh_token(new_token, client_id, user_id, exp)
     }
 }
 

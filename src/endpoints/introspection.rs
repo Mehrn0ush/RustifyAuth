@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use jsonwebtoken::TokenData;
 use jsonwebtoken::{Algorithm, Header};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -224,13 +225,17 @@ impl TokenGenerator for MockTokenGeneratorintro {
 }
 
 pub struct MockTokenStore {
-    revoked_tokens: Mutex<Vec<String>>,
+    pub revoked_tokens: Mutex<Vec<String>>,
+    pub revoked_refresh_tokens: Mutex<Vec<String>>,
+    pub refresh_tokens: Mutex<HashMap<String, (String, String, u64)>>,
 }
 
 impl MockTokenStore {
     pub fn new() -> Self {
         MockTokenStore {
             revoked_tokens: Mutex::new(vec![]),
+            revoked_refresh_tokens: Mutex::new(vec![]),
+            refresh_tokens: Mutex::new(HashMap::new()),
         }
     }
 
@@ -240,19 +245,82 @@ impl MockTokenStore {
 }
 
 impl TokenStore for MockTokenStore {
-    fn revoke_access_token(&mut self, _token: &str) -> bool {
+    fn revoke_access_token(&mut self, token: &str) -> bool {
+        let mut revoked_tokens = self.revoked_tokens.lock().unwrap();
+        revoked_tokens.push(token.to_string());
         true
     }
 
-    fn revoke_refresh_token(&mut self, _token: &str) -> bool {
+    fn revoke_refresh_token(&mut self, token: &str) -> bool {
+        let mut revoked_refresh_tokens = self.revoked_refresh_tokens.lock().unwrap();
+        revoked_refresh_tokens.push(token.to_string());
         true
     }
-
     fn is_token_revoked(&self, token: &str) -> bool {
         self.revoked_tokens
             .lock()
             .unwrap()
             .contains(&token.to_string())
+    }
+
+    fn is_refresh_token_revoked(&self, token: &str) -> bool {
+        let revoked_refresh_tokens = self.revoked_refresh_tokens.lock().unwrap();
+        revoked_refresh_tokens.contains(&token.to_string())
+    }
+
+    fn store_refresh_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError> {
+        let mut refresh_tokens = self.refresh_tokens.lock().unwrap(); // Lock the mutex for safe mutation
+        refresh_tokens.insert(
+            token.to_string(),
+            (client_id.to_string(), user_id.to_string(), exp),
+        );
+        Ok(())
+    }
+
+    fn validate_refresh_token(
+        &mut self,
+        token: &str,
+        client_id: &str,
+    ) -> Result<(String, u64), TokenError> {
+        let refresh_tokens = self.refresh_tokens.lock().unwrap(); // Use Mutex for safe access
+        if let Some((stored_client_id, user_id, exp)) = refresh_tokens.get(token) {
+            if stored_client_id == client_id {
+                return Ok((user_id.clone(), *exp));
+            } else {
+                return Err(TokenError::InvalidClient);
+            }
+        }
+        Err(TokenError::InvalidToken)
+    }
+
+    fn rotate_refresh_token(
+        &mut self,
+        old_token: &str,
+        new_token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError> {
+        // Revoke old refresh token
+        if !self.revoke_refresh_token(old_token) {
+            return Err(TokenError::InvalidToken);
+        }
+
+        // Lock the refresh_tokens mutex
+        let mut refresh_tokens = self.refresh_tokens.lock().unwrap();
+        // Store the new refresh token
+        refresh_tokens.insert(
+            new_token.to_string(),
+            (client_id.to_string(), user_id.to_string(), exp),
+        );
+
+        Ok(())
     }
 }
 
