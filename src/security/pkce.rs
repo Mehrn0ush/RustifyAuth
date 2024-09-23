@@ -1,3 +1,4 @@
+
 use base64::{engine::general_purpose::URL_SAFE, Engine};
 use rand::Rng;
 use sha2::{Digest, Sha256};
@@ -23,7 +24,7 @@ impl PkceMethod {
 
 pub fn generate_code_verifier() -> String {
     let verifier_length =
-        rand::thread_rng().gen_range(CODE_VERIFIER_MIN_LENGTH..CODE_VERIFIER_MAX_LENGTH);
+        rand::thread_rng().gen_range(CODE_VERIFIER_MIN_LENGTH..=CODE_VERIFIER_MAX_LENGTH);
     let verifier: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(verifier_length)
@@ -49,9 +50,9 @@ pub fn validate_pkce(
     code_challenge_method: &Option<String>,
     verifier: &str,
 ) -> bool {
-    /*  if verifier.len() < CODE_VERIFIER_MIN_LENGTH {
+    if verifier.len() < CODE_VERIFIER_MIN_LENGTH {
         return false; // Fail if the verifier is too short
-    }*/
+    }
 
     if code_challenge.is_none() || code_challenge_method.is_none() {
         return false;
@@ -84,14 +85,14 @@ mod tests {
 
     #[test]
     fn test_generate_code_challenge_plain() {
-        let verifier = "exampleverifier".to_string();
+        let verifier = "exampleverifier123456789012345678901234567890123456".to_string(); // 43 chars
         let challenge = generate_code_challenge(&verifier, PkceMethod::Plain);
         assert_eq!(challenge, verifier);
     }
 
     #[test]
     fn test_validate_pkce_plain() {
-        let verifier = "exampleverifier".to_string();
+        let verifier = "exampleverifier123456789012345678901234567890123456".to_string(); // 43 chars
         let challenge = generate_code_challenge(&verifier, PkceMethod::Plain);
         let is_valid = validate_pkce(&Some(challenge), &Some("plain".to_string()), &verifier);
         assert!(
@@ -102,27 +103,29 @@ mod tests {
 
     #[test]
     fn test_validate_pkce_s256() {
-        let verifier = "exampleverifier".to_string();
+        let verifier = "exampleverifier123456789012345678901234567890123456"; // 43 chars
         let challenge = generate_code_challenge(&verifier, PkceMethod::S256);
+        let expected_challenge = "Og-h1KL_BMLt8XWNUYYDeUU12LvjWk58Ue8cYNza_Bg=";
+        assert_eq!(challenge, expected_challenge);
         let is_valid = validate_pkce(
             &Some(challenge.clone()),
             &Some("S256".to_string()),
             &verifier,
         );
-        assert!(is_valid);
+        assert!(is_valid, "Validation should pass for the correct S256 challenge.");
     }
 
     #[test]
     fn test_invalid_pkce() {
-        let verifier = "invalidverifier".to_string();
+        let verifier = "invalidverifier123456789012345678901234567890123456".to_string(); // 43 chars
         let challenge = "wfp4Z3Vkc3QqLNd0M9XYGgEZ_5mpeYvAqEby3gUx-5I".to_string();
         let is_valid = validate_pkce(&Some(challenge), &Some("S256".to_string()), &verifier);
-        assert!(!is_valid);
+        assert!(!is_valid, "Validation should fail for an incorrect S256 challenge.");
     }
 
     #[test]
     fn test_generate_code_verifier_with_plain() {
-        let verifier = "exampleverifier".to_string();
+        let verifier = "exampleverifier123456789012345678901234567890123456".to_string(); // 43 chars
         let challenge = generate_code_challenge(&verifier, PkceMethod::Plain);
         let is_valid = validate_pkce(
             &Some(challenge.clone()),
@@ -132,20 +135,18 @@ mod tests {
         assert!(is_valid, "Validation should pass for plain challenge.");
     }
 
-    /*
     #[test]
     fn test_invalid_code_verifier_length() {
-        let short_verifier = "shortverifier"; // PKCE spec requires verifier length >= 43
+        let short_verifier = "shortverifier".to_string(); // <43 chars
         let challenge = generate_code_challenge(&short_verifier, PkceMethod::Plain);
-
-        // Validate PKCE should fail due to short verifier
+        // Even if challenge equals verifier, validation should fail due to short length
         let is_valid = validate_pkce(&Some(challenge), &Some("plain".to_string()), &short_verifier);
         assert!(!is_valid, "Validation should fail for a short verifier.");
-    }  */
+    }
 
     #[test]
-    fn test_generate_code_challenge_s256() {
-        let verifier = "exampleverifier123456789012345678901234567890123456";
+    fn test_generate_code_challenge_s256_correct() {
+        let verifier = "exampleverifier123456789012345678901234567890123456"; // 43 chars
         let challenge = generate_code_challenge(&verifier, PkceMethod::S256);
         let expected_challenge = "Og-h1KL_BMLt8XWNUYYDeUU12LvjWk58Ue8cYNza_Bg=";
         assert_eq!(challenge, expected_challenge);

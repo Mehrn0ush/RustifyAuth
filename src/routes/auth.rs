@@ -34,7 +34,6 @@ pub async fn authorize(
     token_generator: web::Data<Arc<dyn TokenGenerator>>,
     req: actix_web::HttpRequest,
 ) -> Result<HttpResponse> {
-    // Define allowed scopes
     let allowed_scopes = vec!["read".to_string(), "write".to_string()];
 
     // Step 1: Validate the client information
