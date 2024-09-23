@@ -1,4 +1,3 @@
-
 use base64::{engine::general_purpose::URL_SAFE, Engine};
 use rand::Rng;
 use sha2::{Digest, Sha256};
@@ -112,7 +111,10 @@ mod tests {
             &Some("S256".to_string()),
             &verifier,
         );
-        assert!(is_valid, "Validation should pass for the correct S256 challenge.");
+        assert!(
+            is_valid,
+            "Validation should pass for the correct S256 challenge."
+        );
     }
 
     #[test]
@@ -120,7 +122,10 @@ mod tests {
         let verifier = "invalidverifier123456789012345678901234567890123456".to_string(); // 43 chars
         let challenge = "wfp4Z3Vkc3QqLNd0M9XYGgEZ_5mpeYvAqEby3gUx-5I".to_string();
         let is_valid = validate_pkce(&Some(challenge), &Some("S256".to_string()), &verifier);
-        assert!(!is_valid, "Validation should fail for an incorrect S256 challenge.");
+        assert!(
+            !is_valid,
+            "Validation should fail for an incorrect S256 challenge."
+        );
     }
 
     #[test]
@@ -140,7 +145,11 @@ mod tests {
         let short_verifier = "shortverifier".to_string(); // <43 chars
         let challenge = generate_code_challenge(&short_verifier, PkceMethod::Plain);
         // Even if challenge equals verifier, validation should fail due to short length
-        let is_valid = validate_pkce(&Some(challenge), &Some("plain".to_string()), &short_verifier);
+        let is_valid = validate_pkce(
+            &Some(challenge),
+            &Some("plain".to_string()),
+            &short_verifier,
+        );
         assert!(!is_valid, "Validation should fail for a short verifier.");
     }
 
