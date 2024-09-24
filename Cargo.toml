@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.0.1"
+actix-web-httpauth = "0.8.2"
 async-trait = "0.1.82"
 base64 = "0.22.1"
 constant_time_eq = "0.3.1"

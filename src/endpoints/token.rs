@@ -3,6 +3,7 @@ use crate::core::extension_grants::CustomGrant;
 use crate::core::extension_grants::DeviceFlowHandler;
 use crate::core::extension_grants::ExtensionGrantHandler;
 use crate::core::pkce::validate_pkce_challenge;
+use crate::core::token;
 use crate::core::token::TokenRevocation;
 use crate::core::types::{TokenError, TokenRequest, TokenResponse};
 use crate::endpoints::revoke::RevokeTokenRequest;
@@ -150,14 +151,15 @@ pub fn sign_token(private_key: &[u8], payload: &Claims) -> Result<String, TokenE
     encode(&header, payload, &encoding_key).map_err(|_| TokenError::InternalError)
 }
 
-// Example Claims structure for JWT tokens
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub struct Claims {
-    sub: String,       // Subject (user_id)
-    client_id: String, // Client ID
-    exp: usize,        // Expiration time (Unix timestamp)
-    iat: usize,        // Issued at (Unix timestamp)
-    iss: String,       // Issuer
+    pub sub: String,
+    pub exp: u64,
+    pub scope: Option<String>,
+    pub aud: Option<String>,
+    pub client_id: Option<String>,
+    pub iat: u64,
+    pub iss: Option<String>,
 }
 
 // Token revocation endpoint handler

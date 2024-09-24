@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Expose the core, security, endpoints, and storage modules
+pub mod auth_middleware;
 pub mod authentication;
 pub mod core;
 pub mod endpoints;
