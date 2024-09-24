@@ -15,10 +15,43 @@ use std::env;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[derive(Debug, Clone)]
+struct TokenUsageLog {
+    token: String,
+    user_id: String,
+    timestamp: u64,
+    status: String, // "success" or "failure"
+}
+
+pub struct TokenUsageHistory {
+    logs: Mutex<Vec<TokenUsageLog>>, // Use Mutex for thread-safe access
+}
+
+impl TokenUsageHistory {
+    pub fn new() -> Self {
+        TokenUsageHistory {
+            logs: Mutex::new(Vec::new()),
+        }
+    }
+
+    // Method to log token usage
+    pub fn log_usage(&self, token: &str, user_id: &str, status: &str) {
+        let mut logs = self.logs.lock().unwrap();
+        logs.push(TokenUsageLog {
+            token: token.to_string(),
+            user_id: user_id.to_string(),
+            timestamp: get_current_time().unwrap(),
+            status: status.to_string(),
+        });
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Token {
     pub value: String,
     pub expiration: u64,
+    pub client_id: String,
+    pub user_id: String,
 }
 
 pub struct RedisTokenStore {
@@ -249,8 +282,8 @@ impl TokenStore for InMemoryTokenStore {
     fn store_refresh_token(
         &self,
         token: &str,
-        _client_id: &str,
-        _user_id: &str,
+        client_id: &str,
+        user_id: &str,
         exp: u64,
     ) -> Result<(), TokenError> {
         let mut active_tokens = self.get_active_tokens()?;
@@ -259,6 +292,8 @@ impl TokenStore for InMemoryTokenStore {
             Token {
                 value: token.to_string(),
                 expiration: exp,
+                client_id: client_id.to_string(),
+                user_id: user_id.to_string(),
             },
         );
         Ok(())
@@ -1543,6 +1578,8 @@ cwIDAQAB
                 Token {
                     value: "token1".to_string(),
                     expiration: current_time + 500, // Valid token, expires in 500 seconds
+                    client_id: "client_id_123".to_string(),
+                    user_id: "user_id_123".to_string(),
                 },
             );
             active_tokens.insert(
@@ -1550,6 +1587,8 @@ cwIDAQAB
                 Token {
                     value: "token2".to_string(),
                     expiration: current_time - 100, // Expired token
+                    client_id: "client_id_456".to_string(),
+                    user_id: "user_id_456".to_string(),
                 },
             );
             active_tokens.insert(
@@ -1557,6 +1596,8 @@ cwIDAQAB
                 Token {
                     value: "token3".to_string(),
                     expiration: current_time + 1000, // Valid token, expires in 1000 seconds
+                    client_id: "client_id_789".to_string(),
+                    user_id: "user_id_789".to_string(),
                 },
             );
             active_tokens.insert(
@@ -1564,6 +1605,8 @@ cwIDAQAB
                 Token {
                     value: "token4".to_string(),
                     expiration: current_time - 200, // Expired token
+                    client_id: "client_id_101".to_string(),
+                    user_id: "user_id_101".to_string(),
                 },
             );
         }
@@ -1607,6 +1650,8 @@ cwIDAQAB
                 Token {
                     value: token_valid.clone(),
                     expiration: current_time + 2, // Expires in 2 seconds
+                    client_id: "client_id_123".to_string(),
+                    user_id: "user_id_123".to_string(),
                 },
             );
             active_tokens.insert(
@@ -1614,6 +1659,8 @@ cwIDAQAB
                 Token {
                     value: token_expired.clone(),
                     expiration: current_time - 10, // Already expired
+                    client_id: "client_id_123".to_string(),
+                    user_id: "user_id_123".to_string(),
                 },
             );
         }

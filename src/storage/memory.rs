@@ -1,6 +1,6 @@
 use super::{client, ClientData, StorageBackend};
 use crate::core::authorization::AuthorizationCode;
-use crate::core::token::Token;
+use crate::core::token::{Token, TokenUsageHistory};
 use crate::core::types::TokenError;
 use crate::error::OAuthError;
 use std::collections::{HashMap, HashSet};
@@ -63,6 +63,8 @@ pub struct MemoryTokenStore {
     revoked_access_tokens: HashSet<String>,
     revoked_refresh_tokens: HashSet<String>,
     active_tokens: Mutex<HashMap<String, Token>>,
+    used_refresh_tokens: Mutex<HashSet<String>>,
+    usage_history: TokenUsageHistory,
 }
 
 impl MemoryTokenStore {
@@ -71,6 +73,8 @@ impl MemoryTokenStore {
             revoked_access_tokens: HashSet::new(),
             revoked_refresh_tokens: HashSet::new(),
             active_tokens: Mutex::new(HashMap::new()),
+            used_refresh_tokens: Mutex::new(HashSet::new()),
+            usage_history: TokenUsageHistory::new(),
         }
     }
 }
@@ -137,6 +141,8 @@ impl TokenStore for MemoryTokenStore {
             Token {
                 value: token.to_string(),
                 expiration: exp,
+                client_id: client_id.to_string(),
+                user_id: user_id.to_string(),
             },
         );
         Ok(())
@@ -159,30 +165,53 @@ impl TokenStore for MemoryTokenStore {
         token: &str,
         client_id: &str,
     ) -> Result<(String, u64), TokenError> {
+        {
+            // Step 1: Lock and check used tokens (Replay Attack Prevention)
+            let used_tokens = self.used_refresh_tokens.lock().unwrap();
+            if used_tokens.contains(token) {
+                return Err(TokenError::InvalidToken); // Token has been reused (Replay attack)
+            }
+        }
+
+        // Step 2: Lock and check active tokens
         let token_data = {
             let active_tokens = self.active_tokens.lock().unwrap();
             active_tokens.get(token).cloned()
         };
+
         if let Some(token_data) = token_data {
+            // Step 3: Check if the token is expired
             if token_data.expiration > get_current_time()? {
-                let new_token = generate_new_token();
+                // Step 4: Check if the client_id matches
+                if token_data.client_id == client_id {
+                    // Step 5: Rotate the refresh token
+                    let new_token = generate_new_token();
+                    self.rotate_refresh_token(
+                        token,
+                        &new_token,
+                        client_id,
+                        &token_data.user_id,
+                        token_data.expiration,
+                    )?;
 
-                // Extract the user_id associated with the token
-                let user_id = "user_id_123"; // Here, you would normally extract the actual user_id
-                self.rotate_refresh_token(
-                    token,
-                    &new_token,
-                    client_id,
-                    user_id,
-                    token_data.expiration,
-                )?;
+                    // Step 6: Mark the old token as used
+                    let mut used_tokens = self.used_refresh_tokens.lock().unwrap();
+                    used_tokens.insert(token.to_string());
 
-                Ok((user_id.to_string(), token_data.expiration))
+                    // Step 7: Log usage in the usage history
+                    self.usage_history
+                        .log_usage(token, &token_data.user_id, "success");
+
+                    // Return the user_id and expiration
+                    Ok((token_data.user_id.clone(), token_data.expiration))
+                } else {
+                    Err(TokenError::InvalidClient) // Client ID mismatch
+                }
             } else {
-                Err(TokenError::ExpiredToken)
+                Err(TokenError::ExpiredToken) // Token is expired
             }
         } else {
-            Err(TokenError::InvalidToken)
+            Err(TokenError::InvalidToken) // Token does not exist
         }
     }
 
@@ -284,5 +313,80 @@ mod tests {
 
         // Check if the token is revoked
         assert!(token_store.is_token_revoked(access_token));
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::collections::HashSet;
+
+        #[test]
+        fn test_replay_attack_prevention() {
+            let mut token_store = MemoryTokenStore::new();
+            let refresh_token = "refresh_token_123";
+            let client_id = "client_id_123";
+            let user_id = "user_id_123";
+            let exp = get_current_time().unwrap() + 3600; // Expires in 1 hour
+
+            // Store the refresh token
+            assert!(token_store
+                .store_refresh_token(refresh_token, client_id, user_id, exp)
+                .is_ok());
+
+            // First validation attempt should succeed
+            let validation = token_store.validate_refresh_token(refresh_token, client_id);
+            assert!(validation.is_ok());
+
+            // Second validation attempt should fail (Replay attack)
+            let replay_attempt = token_store.validate_refresh_token(refresh_token, client_id);
+            assert!(replay_attempt.is_err()); // Token should be rejected
+            assert_eq!(replay_attempt.unwrap_err(), TokenError::InvalidToken); // Confirm the specific error
+        }
+
+        #[test]
+        fn test_token_expiration_handling() {
+            let mut token_store = MemoryTokenStore::new();
+            let refresh_token = "refresh_token_456";
+            let client_id = "client_id_456";
+            let user_id = "user_id_456";
+            let exp = get_current_time().unwrap() - 3600; // Expired 1 hour ago
+
+            // Store the expired refresh token
+            assert!(token_store
+                .store_refresh_token(refresh_token, client_id, user_id, exp)
+                .is_ok());
+
+            // Attempt to validate the expired token
+            let validation = token_store.validate_refresh_token(refresh_token, client_id);
+            assert!(validation.is_err()); // Token should be rejected
+            assert_eq!(validation.unwrap_err(), TokenError::ExpiredToken); // Confirm the specific error
+        }
+
+        #[test]
+        fn test_anomaly_detection_with_metadata() {
+            let mut token_store = MemoryTokenStore::new();
+            let refresh_token = "refresh_token_789";
+            let client_id = "client_id_789";
+            let user_id = "user_id_789";
+            let exp = get_current_time().unwrap() + 3600; // Expires in 1 hour
+
+            // Store the refresh token with correct metadata
+            assert!(token_store
+                .store_refresh_token(refresh_token, client_id, user_id, exp)
+                .is_ok());
+
+            // Attempt to validate the token with incorrect client_id
+            let wrong_client_validation =
+                token_store.validate_refresh_token(refresh_token, "wrong_client_id");
+            assert!(wrong_client_validation.is_err()); // Token should be rejected due to client_id mismatch
+            assert_eq!(
+                wrong_client_validation.unwrap_err(),
+                TokenError::InvalidClient
+            );
+
+            // Attempt to validate the token with correct metadata (should succeed)
+            let correct_validation = token_store.validate_refresh_token(refresh_token, client_id);
+            assert!(correct_validation.is_ok());
+        }
     }
 }
