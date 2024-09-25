@@ -1,5 +1,6 @@
 use crate::error::OAuthError;
 
+pub mod access_control;
 pub mod csrf;
 pub mod encryption;
 pub mod mfa;
