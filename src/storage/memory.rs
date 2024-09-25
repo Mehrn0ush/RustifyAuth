@@ -59,7 +59,7 @@ impl CodeStore for MemoryCodeStore {
 }
 
 // MemoryTokenStore for managing token revocation in memory
-pub struct MemoryTokenStore {
+pub struct MemoryTokenStoreTrait {
     revoked_access_tokens: HashSet<String>,
     revoked_refresh_tokens: HashSet<String>,
     active_tokens: Mutex<HashMap<String, Token>>,
@@ -67,9 +67,9 @@ pub struct MemoryTokenStore {
     usage_history: TokenUsageHistory,
 }
 
-impl MemoryTokenStore {
+impl MemoryTokenStoreTrait {
     pub fn new() -> Self {
-        MemoryTokenStore {
+        MemoryTokenStoreTrait {
             revoked_access_tokens: HashSet::new(),
             revoked_refresh_tokens: HashSet::new(),
             active_tokens: Mutex::new(HashMap::new()),
@@ -81,6 +81,13 @@ impl MemoryTokenStore {
 
 // Trait defining methods for managing token revocation
 pub trait TokenStore {
+    fn store_access_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError>;
     fn revoke_access_token(&mut self, token: &str) -> bool;
     fn revoke_refresh_token(&mut self, token: &str) -> bool;
     fn is_token_revoked(&self, token: &str) -> bool;
@@ -110,7 +117,30 @@ pub trait TokenStore {
 }
 
 // Implement TokenStore for MemoryTokenStore
-impl TokenStore for MemoryTokenStore {
+impl TokenStore for MemoryTokenStoreTrait {
+    fn store_access_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError> {
+        let mut active_tokens = self
+            .active_tokens
+            .lock()
+            .map_err(|_| TokenError::InternalError)?;
+        active_tokens.insert(
+            token.to_string(),
+            Token {
+                value: token.to_string(),
+                expiration: exp,
+                client_id: client_id.to_string(),
+                user_id: user_id.to_string(),
+            },
+        );
+        Ok(())
+    }
+
     // Revoke an access token
     fn revoke_access_token(&mut self, token: &str) -> bool {
         let inserted = self.revoked_access_tokens.insert(token.to_string());
@@ -271,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_store_and_validate_refresh_token() {
-        let mut token_store = MemoryTokenStore::new(); // Make token_store mutable
+        let mut token_store = MemoryTokenStoreTrait::new(); // Make token_store mutable
         let refresh_token = "refresh_token_123";
         let client_id = "client_id_123";
         let user_id = "user_id_123";
@@ -292,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_revoke_refresh_token() {
-        let mut token_store = MemoryTokenStore::new(); // Make token_store mutable
+        let mut token_store = MemoryTokenStoreTrait::new(); // Make token_store mutable
         let refresh_token = "refresh_token_456";
 
         // Revoke the refresh token
@@ -305,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_revoke_access_token() {
-        let mut token_store = MemoryTokenStore::new(); // Make token_store mutable
+        let mut token_store = MemoryTokenStoreTrait::new(); // Make token_store mutable
         let access_token = "access_token_789";
 
         // Revoke the access token
@@ -322,7 +352,7 @@ mod tests {
 
         #[test]
         fn test_replay_attack_prevention() {
-            let mut token_store = MemoryTokenStore::new();
+            let mut token_store = MemoryTokenStoreTrait::new();
             let refresh_token = "refresh_token_123";
             let client_id = "client_id_123";
             let user_id = "user_id_123";
@@ -345,7 +375,7 @@ mod tests {
 
         #[test]
         fn test_token_expiration_handling() {
-            let mut token_store = MemoryTokenStore::new();
+            let mut token_store = MemoryTokenStoreTrait::new();
             let refresh_token = "refresh_token_456";
             let client_id = "client_id_456";
             let user_id = "user_id_456";
@@ -364,7 +394,7 @@ mod tests {
 
         #[test]
         fn test_anomaly_detection_with_metadata() {
-            let mut token_store = MemoryTokenStore::new();
+            let mut token_store = MemoryTokenStoreTrait::new();
             let refresh_token = "refresh_token_789";
             let client_id = "client_id_789";
             let user_id = "user_id_789";

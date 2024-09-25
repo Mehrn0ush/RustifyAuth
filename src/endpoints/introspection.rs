@@ -2,6 +2,7 @@ use crate::core::token;
 use crate::core::token::Claims;
 use crate::core::token::{TokenGenerator, TokenRevocation};
 use crate::core::types::TokenError;
+use crate::endpoints::introspection::token::Token;
 use crate::storage::TokenStore;
 use async_trait::async_trait;
 use jsonwebtoken::TokenData;
@@ -225,6 +226,7 @@ impl TokenGenerator for MockTokenGeneratorintro {
 }
 
 pub struct MockTokenStore {
+    pub access_tokens: Mutex<HashMap<String, Token>>,
     pub revoked_tokens: Mutex<Vec<String>>,
     pub revoked_refresh_tokens: Mutex<Vec<String>>,
     pub refresh_tokens: Mutex<HashMap<String, (String, String, u64)>>,
@@ -236,6 +238,7 @@ impl MockTokenStore {
             revoked_tokens: Mutex::new(vec![]),
             revoked_refresh_tokens: Mutex::new(vec![]),
             refresh_tokens: Mutex::new(HashMap::new()),
+            access_tokens: Mutex::new(HashMap::new()),
         }
     }
 
@@ -245,6 +248,25 @@ impl MockTokenStore {
 }
 
 impl TokenStore for MockTokenStore {
+    fn store_access_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError> {
+        let mut access_tokens = self.access_tokens.lock().unwrap();
+        access_tokens.insert(
+            token.to_string(),
+            Token {
+                value: token.to_string(),
+                expiration: exp,
+                client_id: client_id.to_string(),
+                user_id: user_id.to_string(),
+            },
+        );
+        Ok(())
+    }
     fn revoke_access_token(&mut self, token: &str) -> bool {
         let mut revoked_tokens = self.revoked_tokens.lock().unwrap();
         revoked_tokens.push(token.to_string());

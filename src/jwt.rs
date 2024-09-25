@@ -6,24 +6,6 @@ use serde::Serialize;
 use std::env;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/*
-#[derive(Serialize)]
-struct Claims {
-    sub: String,        // The subject (client ID)
-    scope: Vec<String>, // Scopes for this token
-    exp: usize,         // Expiration timestamp
-}
-*/
-/// Generates a JWT for the client credentials flow.
-///
-/// # Arguments
-/// * `client_id` - The ID of the client (subject of the token).
-/// * `scopes` - The scopes that are granted to the client.
-/// * `now` - Current time as a `SystemTime`.
-/// * `expiry_duration` - The duration for which the token is valid.
-///
-/// # Returns
-/// A `Result<String, OAuthError>` containing the JWT if successful, or an error otherwise.
 pub fn generate_jwt(
     client_id: String,
     scopes: Vec<&str>,
@@ -45,7 +27,7 @@ pub fn generate_jwt(
         aud: None,
         client_id: None,
         iat: now_unix,
-        iss: Some("your_issuer".to_string()),
+        iss: Some("your_issuer".to_string()), //
     };
 
     // Load the RSA private key from a file (this should be stored securely)

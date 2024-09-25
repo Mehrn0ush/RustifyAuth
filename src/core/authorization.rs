@@ -494,7 +494,7 @@ mod tests {
     use crate::core::token::{InMemoryTokenStore, JwtTokenGenerator};
     use crate::storage::memory;
     use crate::storage::memory::MemoryCodeStore;
-    use crate::storage::memory::MemoryTokenStore;
+    use crate::storage::memory::MemoryTokenStoreTrait;
     use jsonwebtoken::TokenData;
     use rand::{distributions::Alphanumeric, Rng};
     use serde::{Deserialize, Serialize};
@@ -981,7 +981,7 @@ mod tests {
         let allowed_scopes = vec!["read:documents".to_string(), "write:files".to_string()];
 
         let code_store = Arc::new(Mutex::new(MemoryCodeStore::new()));
-        let token_store = Arc::new(MemoryTokenStore::new());
+        let token_store = Arc::new(MemoryTokenStoreTrait::new());
         let token_generator = Arc::new(MockTokenGenerator::default());
 
         // Create AuthorizationCodeFlow instance

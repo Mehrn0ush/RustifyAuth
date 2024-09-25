@@ -7,7 +7,11 @@ use redis::Client;
 use redis::{Commands, Connection, RedisError};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::collections::HashSet;
+use std::sync::Mutex;
+
 use std::cell::RefCell;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub struct RedisCodeStore {
     conn: RefCell<Connection>, // Use RefCell for interior mutability
@@ -25,7 +29,7 @@ impl RedisCodeStore {
         &self,
         code: &str,
     ) -> Result<Option<AuthorizationCode>, RedisError> {
-        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `get` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the get operation
         let result: Result<String, RedisError> = conn.get(code); // Fetch the code from Redis
 
         match result {
@@ -47,7 +51,7 @@ impl RedisCodeStore {
 impl CodeStore for RedisCodeStore {
     // Store the authorization code in Redis
     fn store_code(&mut self, code: AuthorizationCode) {
-        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `set` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the set operation
         let result: Result<(), RedisError> = conn.set(
             code.code.clone(),
             serde_json::to_string(&code).unwrap_or_else(|_| String::new()), // Serialize AuthorizationCode
@@ -65,7 +69,7 @@ impl CodeStore for RedisCodeStore {
 
     // Revoke (delete) the authorization code from Redis
     fn revoke_code(&mut self, code: &str) -> bool {
-        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `del` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the del operation
         let result: Result<(), RedisError> = conn.del(code); // Delete the code from Redis
 
         if let Err(err) = result {
@@ -93,20 +97,62 @@ impl CodeStore for RedisCodeStore {
 
 pub struct RedisTokenStore {
     conn: RefCell<Connection>, // Use RefCell for interior mutability
+    used_refresh_tokens: Mutex<HashSet<String>>, // Track used refresh tokens to prevent replay attacks
 }
 
 impl RedisTokenStore {
     pub fn new(conn: Connection) -> Self {
         RedisTokenStore {
             conn: RefCell::new(conn), // Initialize connection inside RefCell for mutability
+            used_refresh_tokens: Mutex::new(HashSet::new()), // Initialize used token tracking
         }
     }
 }
 
 impl TokenStore for RedisTokenStore {
+    fn store_access_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+    ) -> Result<(), TokenError> {
+        let current_time = get_current_time()?;
+        if exp <= current_time {
+            // Token has already expired; do not store it
+            println!(
+                "Access token {} has already expired; not storing in Redis.",
+                token
+            );
+            return Ok(());
+        }
+
+        let ttl = exp - current_time; // Time-to-live for the token
+
+        // Use borrow_mut() instead of lock() for RefCell
+        let mut conn = self.conn.borrow_mut(); // Now we borrow the connection mutably from the RefCell
+        let token_data = serde_json::json!({
+            "client_id": client_id,
+            "user_id": user_id,
+            "exp": exp,
+        });
+
+        redis::cmd("SETEX")
+            .arg(token)
+            .arg(ttl as usize) // Set the TTL for the token in seconds
+            .arg(token_data.to_string())
+            .query::<()>(&mut *conn) // Perform the Redis query
+            .map_err(|e| {
+                println!("Failed to store access token: {:?}", e);
+                TokenError::InternalError
+            })?;
+
+        Ok(())
+    }
+
     // Revoke access token by adding it to the revoked set
     fn revoke_access_token(&mut self, token: &str) -> bool {
-        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `sadd` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the sadd operation
         let result: Result<(), RedisError> = conn.sadd("revoked_access_tokens", token);
 
         if let Err(err) = result {
@@ -137,7 +183,7 @@ impl TokenStore for RedisTokenStore {
     }
 
     fn revoke_refresh_token(&mut self, token: &str) -> bool {
-        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `sadd` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the sadd operation
         let result: Result<(), RedisError> = conn.sadd("revoked_refresh_tokens", token);
 
         if let Err(err) = result {
@@ -156,19 +202,28 @@ impl TokenStore for RedisTokenStore {
         let mut conn = self.conn.borrow_mut();
         let key = format!("refresh_token:{}", token);
         let result: Option<String> = conn.get(&key).unwrap();
+        let mut used_tokens = self.used_refresh_tokens.lock().unwrap();
+
+        // Check if the token was already used (Replay Attack Prevention)
+        if used_tokens.contains(token) {
+            return Err(TokenError::InvalidGrant); // Reject reused token
+        }
 
         if let Some(data) = result {
             let parsed: serde_json::Value = serde_json::from_str(&data).unwrap();
             let stored_client_id = parsed["client_id"].as_str().unwrap().to_string(); // Convert to String
             let exp = parsed["exp"].as_u64().unwrap();
 
-            if stored_client_id == client_id.to_string() {
-                Ok((stored_client_id, exp))
+            if stored_client_id == client_id && exp > get_current_time()? {
+                used_tokens.insert(token.to_string()); // Mark token as used
+                Ok((parsed["user_id"].as_str().unwrap().to_string(), exp))
+            } else if exp <= get_current_time()? {
+                Err(TokenError::ExpiredToken) // Token expired
             } else {
-                Err(TokenError::InvalidClient)
+                Err(TokenError::InvalidClient) // Client ID mismatch
             }
         } else {
-            Err(TokenError::InvalidToken)
+            Err(TokenError::InvalidToken) // Token not found
         }
     }
 
@@ -180,7 +235,7 @@ impl TokenStore for RedisTokenStore {
 
     // Check if an access or refresh token is revoked
     fn is_token_revoked(&self, token: &str) -> bool {
-        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the `sismember` operation
+        let mut conn = self.conn.borrow_mut(); // Mutably borrow the Redis connection for the sismember operation
         let access_revoked: bool = conn
             .sismember("revoked_access_tokens", token)
             .unwrap_or(false);
@@ -199,18 +254,24 @@ impl TokenStore for RedisTokenStore {
         user_id: &str,
         exp: u64,
     ) -> Result<(), TokenError> {
-        {
-            let mut conn = self.conn.borrow_mut();
+        if self.revoke_refresh_token(old_token) {
+            // Store the new refresh token
+            self.store_refresh_token(new_token, client_id, user_id, exp)
+        } else {
+            Err(TokenError::InvalidToken) // Handle the case where revoking the old token failed
         }
-        // Revoke the old refresh token
-        if !self.revoke_refresh_token(old_token) {
-            return Err(TokenError::InvalidToken);
-        }
-        // Store the new refresh token
-        self.store_refresh_token(new_token, client_id, user_id, exp)
     }
 }
 
+fn get_current_time() -> Result<u64, TokenError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|e| {
+            eprintln!("Failed to retrieve current time: {:?}", e);
+            TokenError::InternalError
+        })
+}
 /// Redis storage backend for client credentials.
 pub struct RedisStorage {
     pub redis_client: Client,
