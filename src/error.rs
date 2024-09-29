@@ -10,5 +10,10 @@ pub enum OAuthError {
     InvalidClient,
     InvalidScope,
     TokenGenerationError,
-    // Add more errors as needed
+    InvalidRequest,
+    InvalidGrant,
+    UnauthorizedClient,
+    UnsupportedGrantType,
+    RateLimited,
+    InternalError(String),
 }

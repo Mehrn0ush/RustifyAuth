@@ -1,6 +1,7 @@
 use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::authorization::MockTokenGenerator; // Correct module for MockTokenGenerator
 use crate::storage::memory::MemoryCodeStore;
+use security::tls::configure_tls;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -14,6 +15,11 @@ pub mod jwt;
 pub mod routes;
 pub mod security;
 pub mod storage;
+
+// Public function to expose TLS setup as part of the library's API
+pub fn setup_tls() -> rustls::ClientConfig {
+    configure_tls()
+}
 
 // Utility function for testing purposes or common calculations
 pub fn add(left: usize, right: usize) -> usize {

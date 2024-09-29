@@ -1,5 +1,6 @@
 use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::types::{TokenError, TokenRequest, TokenResponse};
+use crate::jwt::{generate_jwt, get_signing_algorithm};
 use crate::security::rate_limit::RateLimiter;
 use dotenv::dotenv;
 use jsonwebtoken::{
@@ -467,7 +468,7 @@ impl JwtTokenGenerator {
     }
 
     // Helper function to sign JWT tokens
-    fn sign_token(&self, claims: &Claims) -> Result<String, TokenError> {
+    pub fn sign_token(&self, claims: &Claims) -> Result<String, TokenError> {
         let header = Header::new(Algorithm::RS256);
         println!("Signing JWT token with RS256 algorithm.");
 
@@ -476,7 +477,7 @@ impl JwtTokenGenerator {
             TokenError::InternalError
         })?;
 
-        encode(&header, &claims, &encoding_key).map_err(|e| {
+        encode(&header, claims, &encoding_key).map_err(|e| {
             println!("Error signing token: {:?}", e);
             TokenError::InternalError
         })
@@ -526,7 +527,16 @@ impl JwtTokenGenerator {
         scope: &str,
     ) -> Result<String, TokenError> {
         let claims = self.create_claims(client_id, user_id, self.access_token_lifetime, scope)?;
-        self.sign_token(&claims)
+
+        //self.sign_token(&claims)
+
+        // Get the signing algorithm from configuration
+        // let signing_algorithm = get_signing_algorithm();
+
+        // Generate the JWT
+        let token = self.sign_token(&claims)?;
+
+        Ok(token)
     }
 
     // Generate a refresh token
@@ -1042,6 +1052,7 @@ pub async fn token_endpoint(
 mod tests {
     use super::*;
     use crate::core::token::{JwtTokenGenerator, TokenError, TokenStore};
+    use crate::jwt::sign_with_rsa;
     use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -1735,5 +1746,27 @@ cwIDAQAB
         store.cleanup_expired_tokens()?;
 
         Ok(())
+    }
+    #[test]
+    fn test_jwt_signing_rsa() {
+        // Include the private key as a string
+        let private_key_pem = include_str!("../private_key.pem");
+
+        // Set the environment variable
+        std::env::set_var("JWT_PRIVATE_KEY", private_key_pem);
+
+        let claims = Claims {
+            sub: "client_id".to_string(),
+            exp: 1234567890,
+            scope: Some("read write".to_string()),
+            aud: None,
+            client_id: None,
+            iat: 1234567890,
+            iss: Some("issuer".to_string()),
+        };
+
+        // Now `sign_with_rsa` can retrieve the private key from the environment
+        let token = sign_with_rsa(&claims).expect("Failed to sign with RSA");
+        assert!(!token.is_empty());
     }
 }

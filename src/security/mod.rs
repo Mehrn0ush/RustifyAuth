@@ -6,6 +6,7 @@ pub mod encryption;
 pub mod mfa;
 pub mod pkce;
 pub mod rate_limit;
+pub mod tls;
 
 /// `ClientData` will store client-related information (e.g., ID, secret, allowed scopes).
 #[derive(Debug, Clone)]

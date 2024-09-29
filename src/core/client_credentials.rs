@@ -1,6 +1,9 @@
+use crate::core::token::Claims;
 use crate::error::OAuthError;
 use crate::jwt::generate_jwt;
+use crate::jwt::SigningAlgorithm;
 use crate::storage::{ClientData, StorageBackend};
+use rustls_pemfile::private_key;
 use std::time::{Duration, SystemTime};
 
 /// Validates client credentials by checking against storage (e.g., Redis, SQL).
@@ -58,22 +61,37 @@ pub fn issue_token(
     }
 
     // Define the token expiry (e.g., 1 hour)
+
     let expiry_duration = Duration::from_secs(3600); // 1 hour
     let now = SystemTime::now();
+    let now_ts = now
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_err(|e| OAuthError::InternalError(format!("Time error: {:?}", e)))?
+        .as_secs(); // now_ts is u64
+    let exp_ts = now_ts + expiry_duration.as_secs(); // exp_ts is u64
 
-    // Generate JWT (or any token mechanism you want to use)
-    let token = generate_jwt(
-        client.client_id.clone(),
-        scopes.to_vec(), // Include scopes in the JWT
-        now,
-        expiry_duration,
-    )?;
+    // Create the `Claims` object
+    let claims = Claims {
+        sub: client.client_id.clone(),
+        exp: exp_ts,
+        iat: now_ts,
+        scope: Some(scopes.join(" ")),
+        aud: None,
+        client_id: Some(client.client_id.clone()),
+        iss: Some("your_issuer_identifier".to_string()),
+    };
+
+    // Specify the signing algorithm
+    let signing_algorithm = SigningAlgorithm::RSA; // Adjust as per your implementation
+
+    // Generate JWT
+    let token = generate_jwt(claims, signing_algorithm)?;
 
     // Return the token response
     Ok(TokenResponse {
         access_token: token,
-        token_type: "Bearer".to_string(), // OAuth 2.0 standard type
-        expires_in: 3600,                 // Expiry time in seconds (1 hour)
+        token_type: "Bearer".to_string(),
+        expires_in: expiry_duration.as_secs(),
     })
 }
 
