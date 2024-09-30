@@ -1,37 +1,56 @@
-# RustifyAuth
+RustifyAuth
+RustifyAuth is an OAuth 2.0 and OAuth 2.1 compliant authorization server library written in Rust. It provides developers with a robust and flexible solution for implementing secure, standards-compliant authorization mechanisms.
 
-RustifyAuth is an OAuth 2.0 and 2.1 compliant authorization server library written in Rust. 
+🚀 Features
+OAuth 2.0 & 2.1 Compliance: Implements key authorization flows such as Authorization Code with PKCE, Client Credentials, and others.
+Enhanced Security: Includes advanced security features like MFA (Multi-Factor Authentication), rate-limiting, token encryption (JWE), and more.
+Token Management: Built-in support for token introspection, revocation, and secure JWT handling with RSA/ECC and quantum-resistant algorithms (Dilithium/Falcon).
+Pluggable Storage: Flexible backend support (In-Memory, Redis, SQL) for storing client data and tokens.
+📦 Getting Started
+Prerequisites
+Before getting started, ensure you have the following installed on your system:
 
-## Features
-- Supports OAuth 2.0 and OAuth 2.1 standards.
-- Implements authorization grant types such as Authorization Code with PKCE, Client Credentials, and more.
-- Includes security features like MFA, rate-limiting, and token encryption (JWE).
+Rust (Stable toolchain)
+Cargo (Rust package manager)
+Installation
+To install and build RustifyAuth locally, clone the repository and use Cargo:
 
-## Getting Started
-### Prerequisites
-- Rust (stable toolchain)
-- Cargo
-
-### Installation
-Clone the repository and run:
-
-```bash
+bash
+Copy code
+git clone https://github.com/Mehrn0ush/RustifyAuth.git
+cd RustifyAuth
 cargo build
+Running the Server
+Once you've built the project, you can start the server by running:
 
-### Running Tests
-RustifyAuth comes with a comprehensive test suite. To run the tests, execute:
-```bash
+bash
+Copy code
+cargo run
+🔧 Running Tests
+RustifyAuth comes with a comprehensive suite of unit and integration tests. To execute the tests, use:
+
+bash
+Copy code
 cargo test
-```
+🎉 Hacktoberfest 2024
+We are excited to be part of Hacktoberfest 2024! Whether you're interested in fixing bugs, improving documentation, writing tests, or adding new features, we welcome your contributions. Check out the CONTRIBUTING.md for guidelines.
 
-### Hacktoberfest 2024
-We are participating in Hacktoberfest 2024! Contributions are welcome, whether you’re fixing bugs, writing documentation, writing tests, or adding new features. Check out the [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and look for issues labeled with "hacktoberfest" to find what you can work on.
+How to Contribute
+Look for issues tagged with hacktoberfest for contribution opportunities.
+Fork the repository, create a feature branch, and submit your pull request.
+Make sure your contributions align with the CONTRIBUTING.md guidelines.
+🤝 Contributing
+We welcome contributions of all kinds, including:
 
-### Contributing during Hacktoberfest
-- Look for issues tagged with `hacktoberfest`.
-- Follow the contribution guidelines in the [CONTRIBUTING.md](CONTRIBUTING.md).
+Bug fixes 🐛
+Feature implementations ✨
+Code optimizations 🚀
+Documentation improvements 📚
+For detailed instructions, see the CONTRIBUTING.md.
 
+📞 Contact
+For any questions or assistance, feel free to reach out:
 
-## Contact
-If you have any questions, feel free to contact us at: [Mehrnoush.vaseghi@gmail.com]. 
-Alternatively, you can open a GitHub issue to ask questions or provide feedback.
+Email: Mehrnoush.vaseghi@gmail.com
+GitHub Issues: Open an issue for questions, feature requests, or feedback.
+Thank you for checking out RustifyAuth! We look forward to your contributions and feedback.
