@@ -1,37 +1,77 @@
 # RustifyAuth
 
-RustifyAuth is an OAuth 2.0 and 2.1 compliant authorization server library written in Rust. 
+**RustifyAuth** is an OAuth 2.0 and OAuth 2.1 compliant authorization server library written in Rust. It provides developers with a robust and flexible solution for implementing secure, standards-compliant authorization mechanisms.
 
-## Features
-- Supports OAuth 2.0 and OAuth 2.1 standards.
-- Implements authorization grant types such as Authorization Code with PKCE, Client Credentials, and more.
-- Includes security features like MFA, rate-limiting, and token encryption (JWE).
+## 🚀 Features
 
-## Getting Started
+- **OAuth 2.0 & 2.1 Compliance**: Implements key authorization flows such as Authorization Code with PKCE, Client Credentials, and others.
+- **Enhanced Security**: Includes advanced security features like MFA (Multi-Factor Authentication), rate-limiting, token encryption (JWE), and more.
+- **Token Management**: Built-in support for token introspection, revocation, and secure JWT handling with RSA/ECC and quantum-resistant algorithms (Dilithium/Falcon).
+- **Pluggable Storage**: Flexible backend support (In-Memory, Redis, SQL) for storing client data and tokens.
+
+## 📦 Getting Started
+
 ### Prerequisites
-- Rust (stable toolchain)
-- Cargo
+
+Before getting started, ensure you have the following installed on your system:
+
+- Rust (Stable toolchain)
+- Cargo (Rust package manager)
 
 ### Installation
-Clone the repository and run:
+
+To install and build **RustifyAuth** locally, clone the repository and use Cargo:
 
 ```bash
+git clone https://github.com/Mehrn0ush/RustifyAuth.git
+cd RustifyAuth
 cargo build
+```
 
-### Running Tests
-RustifyAuth comes with a comprehensive test suite. To run the tests, execute:
+### Running the Server
+Once you've built the project, you can start the server by running:
+
+```bash
+cargo run
+```
+
+### 🔧 Running Tests
+
+RustifyAuth comes with a comprehensive suite of unit and integration tests. To execute the tests, use:
+
 ```bash
 cargo test
 ```
 
-### Hacktoberfest 2024
-We are participating in Hacktoberfest 2024! Contributions are welcome, whether you’re fixing bugs, writing documentation, writing tests, or adding new features. Check out the [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and look for issues labeled with "hacktoberfest" to find what you can work on.
-
-### Contributing during Hacktoberfest
-- Look for issues tagged with `hacktoberfest`.
-- Follow the contribution guidelines in the [CONTRIBUTING.md](CONTRIBUTING.md).
 
 
-## Contact
-If you have any questions, feel free to contact us at: [Mehrnoush.vaseghi@gmail.com]. 
-Alternatively, you can open a GitHub issue to ask questions or provide feedback.
+## 🎉 Hacktoberfest 2024
+
+We are excited to be part of **Hacktoberfest 2024**! Whether you're interested in fixing bugs, improving documentation, writing tests, or adding new features, we welcome your contributions. Check out the [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines.
+
+### How to Contribute
+
+- **Find Issues**: Look for issues tagged with `hacktoberfest` for contribution opportunities.
+- **Fork the Repository**: Click the fork button at the top right of this page to create your own copy.
+- **Create a Feature Branch**: Use a descriptive name for your branch (e.g., `fix-auth-bug`).
+- **Submit a Pull Request**: Once your changes are ready, submit a pull request. Ensure your contributions align with the [`CONTRIBUTING.md`](CONTRIBUTING.md) guidelines.
+
+### 🤝 Contributing
+
+We welcome contributions of all kinds, including:
+
+- 🐛 **Bug Fixes**
+- ✨ **Feature Implementations**
+- 🚀 **Code Optimizations**
+- 📚 **Documentation Improvements**
+
+For detailed instructions, see the [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## 📞 Contact
+
+For any questions or assistance, feel free to reach out:
+
+- **Email**: [Mehrnoush.vaseghi@gmail.com](mailto:Mehrnoush.vaseghi@gmail.com)
+- **GitHub Issues**: [Open an issue](https://github.com/Mehrn0ush/RustifyAuth/issues) for questions, feature requests, or feedback.
+
+Thank you for checking out **RustifyAuth**! We look forward to your contributions and feedback.
