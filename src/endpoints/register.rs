@@ -1,12 +1,12 @@
+use crate::core::token::JwtTokenGenerator;
+use crate::core::token::{InMemoryTokenStore, RedisTokenStore, TokenStore};
+use crate::security::access_control::RBAC;
+use actix_web::HttpRequest;
 use actix_web::{web, HttpResponse, Responder};
+use actix_web_httpauth::extractors::bearer::BearerAuth;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use crate::core::token::{TokenStore, InMemoryTokenStore, RedisTokenStore};
-use crate::core::token::JwtTokenGenerator;
-use actix_web_httpauth::extractors::bearer::BearerAuth;
-use actix_web::HttpRequest;
-use crate::security::access_control::RBAC;
 
 // Structs for handling client metadata and registration responses
 
@@ -89,7 +89,9 @@ pub async fn register_client_handler<T: TokenStore>(
 
     let mut store = store.write().unwrap();
     store.clients.insert(client_id.clone(), client);
-    store.client_secrets.insert(client_id.clone(), client_secret.clone());
+    store
+        .client_secrets
+        .insert(client_id.clone(), client_secret.clone());
 
     // Respond with client_id and client_secret
     HttpResponse::Ok().json(ClientRegistrationResponse {
@@ -151,11 +153,11 @@ mod tests {
             software_statement: None,
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(store.clone())
-                .route("/register", web::post().to(register_client_handler::<InMemoryTokenStore>))
-        ).await;
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/register",
+            web::post().to(register_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
 
         let req = test::TestRequest::post()
             .uri("/register")
@@ -185,11 +187,11 @@ mod tests {
             software_statement: None,
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(store.clone())
-                .route("/register", web::post().to(register_client_handler::<InMemoryTokenStore>))
-        ).await;
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/register",
+            web::post().to(register_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
 
         let req = test::TestRequest::post()
             .uri("/register")
@@ -213,11 +215,11 @@ mod tests {
             software_statement: None,
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(store.clone())
-                .route("/register", web::post().to(register_client_handler::<InMemoryTokenStore>))
-        ).await;
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/register",
+            web::post().to(register_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
 
         let tbid = "tbid_example_value";
         let req = test::TestRequest::post()
@@ -237,7 +239,4 @@ mod tests {
 
         assert_eq!(stored_client.tbid, Some(tbid.to_string()));
     }
-
-
-
 }

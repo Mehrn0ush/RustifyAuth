@@ -139,7 +139,6 @@ impl AuthorizationCodeFlow {
         code: &str,
         pkce_verifier: &str,
     ) -> Result<TokenResponse, TokenError> {
-
         eprintln!(
             "Attempting to retrieve the authorization code for: {}",
             code
@@ -153,8 +152,7 @@ impl AuthorizationCodeFlow {
             "Authorization code retrieved successfully: {:?}",
             stored_code
         );
-        let tbid = stored_code.tbid.clone(); 
-
+        let tbid = stored_code.tbid.clone();
 
         // If the code is revoked, return an error
         if code_store.is_code_revoked(code) {
@@ -507,8 +505,6 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -523,8 +519,6 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime};
-
-
 
     // Test for generating a valid authorization code
     #[test]
@@ -603,7 +597,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
-                None
+                None,
             )
             .unwrap();
 
@@ -668,7 +662,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
-                None
+                None,
             )
             .unwrap();
 
@@ -733,7 +727,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
-                None
+                None,
             )
             .unwrap();
 
@@ -827,7 +821,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
-                None
+                None,
             )
             .unwrap();
 
@@ -845,8 +839,7 @@ mod tests {
             None,
             &auth_code.code,
             "read:documents",
-            None
-            
+            None,
         );
 
         assert!(
@@ -893,7 +886,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
-                None
+                None,
             )
             .unwrap();
 
@@ -951,7 +944,7 @@ mod tests {
             "redirect_uri",
             &pkce_verifier,
             "invalid_scope",
-            None
+            None,
         );
 
         assert!(result.is_err(), "Expected error due to invalid scope.");
@@ -989,7 +982,7 @@ mod tests {
             "redirect_uri",
             &invalid_verifier, // Use invalid_verifier here
             "read:documents",
-            None
+            None,
         );
 
         // The generation should fail due to the invalid verifier
@@ -1039,7 +1032,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
-                None
+                None,
             )
             .unwrap();
 

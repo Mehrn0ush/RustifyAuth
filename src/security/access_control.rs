@@ -18,7 +18,11 @@ impl RBAC {
     }
 
     // Verifies if the token (user role) has the required permission
-    pub fn rbac_check(&self, token: &str, required_permission: &str) -> Result<(), RegistrationError> {
+    pub fn rbac_check(
+        &self,
+        token: &str,
+        required_permission: &str,
+    ) -> Result<(), RegistrationError> {
         if let Some(permissions) = self.roles.get(token) {
             if permissions.contains(&required_permission.to_string()) {
                 return Ok(());

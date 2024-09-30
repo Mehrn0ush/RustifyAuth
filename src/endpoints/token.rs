@@ -1,16 +1,16 @@
 use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::extension_grants::{CustomGrant, DeviceFlowHandler, ExtensionGrantHandler};
 use crate::core::pkce::validate_pkce_challenge;
-use crate::core::token::{TokenRevocation, TokenGenerator, extract_tbid};
+use crate::core::token::{extract_tbid, TokenGenerator, TokenRevocation};
 use crate::core::types::{TokenError, TokenRequest, TokenResponse};
 use crate::endpoints::revoke::RevokeTokenRequest;
 use crate::security::rate_limit::RateLimiter;
 use crate::storage::memory::TokenStore;
-use actix_web::{web, HttpResponse, Result, HttpRequest, ResponseError};
+use actix_web::{web, HttpRequest, HttpResponse, ResponseError, Result};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use std::fmt;
+use std::sync::{Arc, Mutex};
 
 // Error Display Implementation
 impl std::fmt::Display for TokenError {
@@ -23,7 +23,9 @@ impl ResponseError for TokenError {
     fn error_response(&self) -> HttpResponse {
         match *self {
             TokenError::InvalidGrant => HttpResponse::BadRequest().body("Invalid grant"),
-            TokenError::UnsupportedGrantType => HttpResponse::BadRequest().body("Unsupported grant type"),
+            TokenError::UnsupportedGrantType => {
+                HttpResponse::BadRequest().body("Unsupported grant type")
+            }
             TokenError::MissingFields => HttpResponse::BadRequest().body("Missing fields"),
             TokenError::RateLimited => HttpResponse::TooManyRequests().body("Rate limited"),
             TokenError::InternalError => HttpResponse::InternalServerError().body("Internal error"),
@@ -31,9 +33,15 @@ impl ResponseError for TokenError {
             TokenError::ExpiredToken => HttpResponse::Unauthorized().body("Expired token"),
             TokenError::InsufficientScope => HttpResponse::Forbidden().body("Insufficient scope"),
             TokenError::InvalidClient => HttpResponse::Unauthorized().body("Invalid client"),
-            TokenError::UnsupportedOperation => HttpResponse::BadRequest().body("Unsupported operation"),
-            TokenError::InvalidTokenBinding => HttpResponse::Unauthorized().body("Invalid Token Binding"),
-            TokenError::MissingTokenBinding => HttpResponse::BadRequest().body("Missing Token Binding"),
+            TokenError::UnsupportedOperation => {
+                HttpResponse::BadRequest().body("Unsupported operation")
+            }
+            TokenError::InvalidTokenBinding => {
+                HttpResponse::Unauthorized().body("Invalid Token Binding")
+            }
+            TokenError::MissingTokenBinding => {
+                HttpResponse::BadRequest().body("Missing Token Binding")
+            }
             _ => HttpResponse::InternalServerError().body("Unknown error"),
         }
     }
@@ -207,7 +215,7 @@ pub struct Claims {
 }
 // Token revocation endpoint handler
 pub async fn revoke_token_endpoint(
-    req: HttpRequest, 
+    req: HttpRequest,
     form: web::Form<RevokeTokenRequest>,
     token_store: Arc<Mutex<dyn TokenStore>>,
 ) -> Result<HttpResponse, TokenError> {
@@ -239,4 +247,3 @@ pub async fn revoke_token_endpoint(
 
     Ok(HttpResponse::Ok().body("Token revoked"))
 }
-

@@ -2,6 +2,8 @@ use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::types::{TokenError, TokenRequest, TokenResponse};
 use crate::jwt::{generate_jwt, get_signing_algorithm};
 use crate::security::rate_limit::RateLimiter;
+use actix_web::HttpRequest;
+use dotenv::dotenv;
 use jsonwebtoken::{
     decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
@@ -14,9 +16,6 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use actix_web::HttpRequest;
-use dotenv::dotenv;
-
 
 // Helper function for getting current time in seconds since UNIX epoch
 
@@ -30,8 +29,6 @@ fn get_current_time() -> Result<u64, TokenError> {
         })
 }
 
-
-
 pub trait TokenStore: Send + Sync {
     fn store_refresh_token(
         &self,
@@ -41,9 +38,8 @@ pub trait TokenStore: Send + Sync {
         exp: u64,
         tbid: Option<String>,
     ) -> Result<(), TokenError>;
-    
-    fn revoke_token(&self, token: String, exp: u64) -> Result<(), TokenError>;
 
+    fn revoke_token(&self, token: String, exp: u64) -> Result<(), TokenError>;
 
     fn validate_refresh_token(
         &self,
@@ -56,18 +52,16 @@ pub trait TokenStore: Send + Sync {
     fn cleanup_expired_tokens(&self) -> Result<(), TokenError>; // Regularly clean up expired tokens
 }
 
-
 #[derive(Debug, Clone)]
 struct TokenUsageLog {
     token: String,
     user_id: String,
     timestamp: u64,
-    status: String, 
+    status: String,
 }
 
-
 pub struct TokenUsageHistory {
-    logs: Mutex<Vec<TokenUsageLog>>, 
+    logs: Mutex<Vec<TokenUsageLog>>,
 }
 
 impl TokenUsageHistory {
@@ -123,19 +117,18 @@ impl TokenStore for RedisTokenStore {
         tbid: Option<String>,
     ) -> Result<(), TokenError> {
         // Assume tbid is handled separately or included in the token value *****************
-     //   let tbid = get_tbid_from_current_context()?; // We should Implement this function based on context ***
-
+        //   let tbid = get_tbid_from_current_context()?; // We should Implement this function based on context ***
 
         let token_data = Token {
             value: token.to_string(),
             expiration: exp,
             client_id: client_id.to_string(),
             user_id: user_id.to_string(),
-            tbid, 
+            tbid,
         };
 
-        let serialized = serde_json::to_string(&token_data).map_err(|_| TokenError::InternalError)?;
-
+        let serialized =
+            serde_json::to_string(&token_data).map_err(|_| TokenError::InternalError)?;
 
         let current_time = get_current_time()?;
         if exp <= current_time {
@@ -167,25 +160,26 @@ impl TokenStore for RedisTokenStore {
         let key = format!("refresh_token:{}", token);
         let result: Option<String> = conn.get(&key).map_err(|_| TokenError::InternalError)?;
         if let Some(value) = result {
-            let token_data: Token = serde_json::from_str(&value).map_err(|_| TokenError::InvalidToken)?;
-            if token_data.client_id == client_id {
-            let (stored_client_id, user_id): (String, String) =
+            let token_data: Token =
                 serde_json::from_str(&value).map_err(|_| TokenError::InvalidToken)?;
-            if stored_client_id == client_id {
-                // Get the token's expiration time
-                let ttl: usize = conn.ttl(&key).map_err(|_| TokenError::InternalError)?;
-                let exp = get_current_time()? + ttl as u64;
-                Ok((user_id, exp))
+            if token_data.client_id == client_id {
+                let (stored_client_id, user_id): (String, String) =
+                    serde_json::from_str(&value).map_err(|_| TokenError::InvalidToken)?;
+                if stored_client_id == client_id {
+                    // Get the token's expiration time
+                    let ttl: usize = conn.ttl(&key).map_err(|_| TokenError::InternalError)?;
+                    let exp = get_current_time()? + ttl as u64;
+                    Ok((user_id, exp))
+                } else {
+                    Err(TokenError::InvalidClient)
+                }
             } else {
-                Err(TokenError::InvalidClient)
+                Err(TokenError::InvalidToken)
             }
         } else {
             Err(TokenError::InvalidToken)
         }
-    } else {
-        Err(TokenError::InvalidToken)
     }
-}
 
     fn revoke_token(&self, token: String, exp: u64) -> Result<(), TokenError> {
         let now = get_current_time()?;
@@ -201,9 +195,7 @@ impl TokenStore for RedisTokenStore {
 
     fn is_token_revoked(&self, token: &str) -> Result<bool, TokenError> {
         let mut conn = self.conn.lock().map_err(|_| TokenError::InternalError)?;
-        let result: Option<String> = conn
-            .get(token)
-            .map_err(|_| TokenError::InternalError)?;
+        let result: Option<String> = conn.get(token).map_err(|_| TokenError::InternalError)?;
 
         // If token is not found (expired), consider it revoked
         Ok(result.is_none() || result.as_deref() == Some("revoked"))
@@ -236,7 +228,7 @@ impl RedisTokenStore {
     }
 }
 
-/* 
+/*
     fn is_token_revoked(&self, token: &str) -> Result<bool, TokenError> {
         // Handle possible errors when locking the connection and retrieving the token status.
         let mut conn = self.conn.lock().map_err(|_| TokenError::InternalError)?; // Lock the connection
@@ -252,7 +244,6 @@ impl RedisTokenStore {
 }
 
     */
-
 
 #[derive(Debug)]
 pub struct InMemoryTokenStore {
@@ -315,7 +306,7 @@ impl InMemoryTokenStore {
     }
 }
 
-/* 
+/*
 fn get_current_time() -> Result<u64, TokenError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -325,7 +316,6 @@ fn get_current_time() -> Result<u64, TokenError> {
             TokenError::InternalError
         })
 } */
-
 
 // Helper function to check if the token is expired
 fn is_token_expired(exp: u64, now: u64) -> bool {
@@ -349,7 +339,7 @@ impl TokenStore for InMemoryTokenStore {
                 expiration: exp,
                 client_id: client_id.to_string(),
                 user_id: user_id.to_string(),
-                tbid, 
+                tbid,
             },
         );
         Ok(())
@@ -363,10 +353,7 @@ impl TokenStore for InMemoryTokenStore {
         let active_tokens = self.get_active_tokens()?;
         if let Some(token_data) = active_tokens.get(token) {
             if token_data.expiration > get_current_time()? {
-                return Ok((
-                    token_data.user_id.clone(),
-                    token_data.expiration,
-                ));
+                return Ok((token_data.user_id.clone(), token_data.expiration));
             } else {
                 return Err(TokenError::ExpiredToken);
             }
@@ -457,7 +444,6 @@ pub trait TokenGenerator: Send + Sync {
     ) -> Result<(String, String), TokenError>;
 }
 
-
 // JWT token generator using RS256
 pub struct JwtTokenGenerator {
     pub private_key: Vec<u8>,             // RS256 private key for JWT
@@ -493,7 +479,7 @@ impl JwtTokenGenerator {
         client_id: &str,
         user_id: &str,
         scope: &str,
-        tbid: Option<String>, 
+        tbid: Option<String>,
     ) -> Result<String, TokenError> {
         self.generate_access_token_internal(client_id, user_id, scope, tbid)
     }
@@ -503,7 +489,7 @@ impl JwtTokenGenerator {
         client_id: &str,
         user_id: &str,
         scope: &str,
-        tbid: Option<String>, 
+        tbid: Option<String>,
     ) -> Result<String, TokenError> {
         self.generate_refresh_token_internal(client_id, user_id, scope, tbid)
     }
@@ -526,15 +512,22 @@ impl JwtTokenGenerator {
             .revoke_token(refresh_token.to_string(), exp)?;
 
         // Step 3: Generate a new access token
-        let access_token = self.generate_access_token_internal(client_id, &user_id, scope, tbid.clone())?;
+        let access_token =
+            self.generate_access_token_internal(client_id, &user_id, scope, tbid.clone())?;
 
         // Step 4: Generate a new refresh token
-        let new_refresh_token = self.generate_refresh_token_internal(client_id, &user_id, scope, tbid.clone())?;
+        let new_refresh_token =
+            self.generate_refresh_token_internal(client_id, &user_id, scope, tbid.clone())?;
 
         // Step 5: Store the new refresh token with the updated expiration time
         let new_exp = get_current_time()? + self.refresh_token_lifetime.as_secs();
-        self.token_store
-            .store_refresh_token(&new_refresh_token, client_id, &user_id, new_exp, tbid)?;
+        self.token_store.store_refresh_token(
+            &new_refresh_token,
+            client_id,
+            &user_id,
+            new_exp,
+            tbid,
+        )?;
 
         Ok((access_token, new_refresh_token))
     }
@@ -593,7 +586,7 @@ impl JwtTokenGenerator {
         })
     }
 
-    // Generate an access token internally 
+    // Generate an access token internally
     pub fn generate_access_token_internal(
         &self,
         client_id: &str,
@@ -601,7 +594,8 @@ impl JwtTokenGenerator {
         scope: &str,
         tbid: Option<String>,
     ) -> Result<String, TokenError> {
-        let claims = self.create_claims(client_id, user_id, self.access_token_lifetime, scope, tbid)?;
+        let claims =
+            self.create_claims(client_id, user_id, self.access_token_lifetime, scope, tbid)?;
 
         let token = self.sign_token(&claims)?;
 
@@ -616,7 +610,8 @@ impl JwtTokenGenerator {
         scope: &str,
         tbid: Option<String>,
     ) -> Result<String, TokenError> {
-        let claims = self.create_claims(client_id, user_id, self.refresh_token_lifetime, scope, tbid)?;
+        let claims =
+            self.create_claims(client_id, user_id, self.refresh_token_lifetime, scope, tbid)?;
         self.sign_token(&claims)
     }
 
@@ -638,7 +633,7 @@ impl JwtTokenGenerator {
         })?;
 
         let mut validation = Validation::new(Algorithm::RS256);
-        validation.validate_exp = true; 
+        validation.validate_exp = true;
         validation.leeway = 5; // Allow 5 seconds of leeway
 
         let token_data = decode::<Claims>(token, &decoding_key, &validation).map_err(|err| {
@@ -722,7 +717,6 @@ impl JwtTokenGenerator {
         Ok(token_data)
     }
 
-   
     // Revoke a JWT access token
     fn revoke_jwt_access_token(&self, token: &str) -> Result<(), TokenError> {
         let exp = self.get_token_exp(token)?; // Get token expiration time
@@ -738,7 +732,7 @@ impl JwtTokenGenerator {
 
         if exp <= now {
             println!("Token has already expired.");
-            return Err(TokenError::ExpiredToken); 
+            return Err(TokenError::ExpiredToken);
         }
 
         self.token_store.revoke_token(token.to_string(), exp)
@@ -829,16 +823,21 @@ impl TokenGenerator for JwtTokenGenerator {
         let access_token = self.generate_access_token(client_id, &user_id, scope, tbid.clone())?;
 
         // Step 4: Generate a new refresh token
-        let new_refresh_token = self.generate_refresh_token(client_id, &user_id, scope, tbid.clone())?;
+        let new_refresh_token =
+            self.generate_refresh_token(client_id, &user_id, scope, tbid.clone())?;
 
         // Step 5: Store the new refresh token
-       let new_exp = get_current_time()? + self.refresh_token_lifetime.as_secs();
-       self.token_store
-           .store_refresh_token(&new_refresh_token, client_id, &user_id, new_exp, tbid)?;
+        let new_exp = get_current_time()? + self.refresh_token_lifetime.as_secs();
+        self.token_store.store_refresh_token(
+            &new_refresh_token,
+            client_id,
+            &user_id,
+            new_exp,
+            tbid,
+        )?;
 
         Ok((access_token, new_refresh_token))
     }
-
 
     fn access_token_lifetime(&self) -> Duration {
         self.access_token_lifetime
@@ -876,8 +875,7 @@ impl TokenGenerator for JwtTokenGenerator {
     }
 }
 
-
-/*   
+/*
         // Step 1: Decode the token to check expiration and validity
         let decoding_key = DecodingKey::from_rsa_pem(&self.public_key).map_err(|e| {
             println!("Error loading public key for validation: {:?}", e);
@@ -953,10 +951,8 @@ impl TokenGenerator for JwtTokenGenerator {
 
         println!("Token {} successfully validated.", token);
         Ok(token_data)
-    }   
+    }
 }*/
-
-
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub struct Claims {
@@ -967,9 +963,8 @@ pub struct Claims {
     pub client_id: Option<String>,
     pub iat: u64,
     pub iss: Option<String>,
-    pub tbid: Option<String>, 
+    pub tbid: Option<String>,
 }
-
 
 // Opaque token generator using random strings
 pub struct OpaqueTokenGenerator {
@@ -1038,7 +1033,7 @@ impl TokenGenerator for OpaqueTokenGenerator {
         // Opaque tokens do not carry claims or support validation like JWT tokens.
         // Hence, this operation is not supported for opaque tokens.
         println!("Opaque tokens do not support validation.");
-        Err(TokenError::UnsupportedOperation) 
+        Err(TokenError::UnsupportedOperation)
     }
 
     fn generate_access_token(
@@ -1064,7 +1059,6 @@ impl TokenGenerator for OpaqueTokenGenerator {
     }
 }
 
-
 pub fn extract_tbid(req: &HttpRequest) -> Result<String, TokenError> {
     if let Some(tbid_header) = req.headers().get("X-Token-Binding") {
         if let Ok(tbid_str) = tbid_header.to_str() {
@@ -1077,29 +1071,23 @@ pub fn extract_tbid(req: &HttpRequest) -> Result<String, TokenError> {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::token::{JwtTokenGenerator, TokenError, TokenStore};
+    use crate::endpoints::register::{ClientMetadata, ClientRegistrationResponse, ClientStore};
     use crate::jwt::sign_with_rsa;
     use actix_web::{test, web, App};
     use actix_web_httpauth::extractors::bearer::BearerAuth;
     use env_logger;
     use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+    use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
+    use std::env;
+    use std::sync::RwLock;
     use std::sync::{Arc, Mutex};
     use std::thread::sleep;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
-    use serde::{Deserialize, Serialize};
-    use crate::endpoints::register::{ClientRegistrationResponse, ClientStore, ClientMetadata};
-    use std::env;
-    use std::sync::RwLock;
-
-
-
-    
 
     // Sample RSA private key for signing JWT (for testing purposes)
     const RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
@@ -1201,8 +1189,6 @@ cwIDAQAB
         }
     }
 
-
-
     impl TokenStore for MockTokenStore {
         fn store_refresh_token(
             &self,
@@ -1213,9 +1199,8 @@ cwIDAQAB
             tbid: Option<String>,
         ) -> Result<(), TokenError> {
             let mut tokens = self.tokens.lock().unwrap();
-            tokens.insert(
-                token.to_string(),exp );
-            
+            tokens.insert(token.to_string(), exp);
+
             Ok(())
         }
 
@@ -1251,44 +1236,40 @@ cwIDAQAB
             Ok(!contains) // Token is revoked if it's not in the store
         }
 
-
-
         fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
             let current_time = get_current_time()?; // Get the current time in seconds
             let mut expired_tokens = Vec::new(); // Collect expired tokens to remove later
-        
+
             // Lock the token store for thread safety
             let mut tokens = self.tokens.lock().map_err(|_| TokenError::InternalError)?;
-        
+
             // Iterate over the tokens in the store
             for (token, token_data) in tokens.iter() {
                 println!(
                     "Checking token: {}, Exp: {}, Now: {}",
                     token, token_data, current_time
                 );
-                if *token_data <= current_time { // Compare expiration with current time
+                if *token_data <= current_time {
+                    // Compare expiration with current time
                     // Token has expired, so mark it for removal
                     expired_tokens.push(token.clone());
                 }
             }
-        
+
             // Now, remove all expired tokens and mark them as revoked
             for token in expired_tokens {
                 tokens.remove(&token); // Remove expired token from active store
                 println!("Removing expired token: {}", token);
             }
-        
+
             Ok(())
         }
-        
-        
     }
 
-        // Mock implementation of get_tbid_from_current_context
-        fn get_tbid_from_current_context() -> Result<String, TokenError> {
-            Ok("mock_tbid".to_string())
-        }
-
+    // Mock implementation of get_tbid_from_current_context
+    fn get_tbid_from_current_context() -> Result<String, TokenError> {
+        Ok("mock_tbid".to_string())
+    }
 
     // Helper function to get current time
     fn get_current_time() -> Result<u64, TokenError> {
@@ -1308,7 +1289,6 @@ cwIDAQAB
             client_secret: "mock_client_secret".to_string(),
         })
     }
-
 
     #[test]
     async fn test_exchange_refresh_token_success() -> Result<(), TokenError> {
@@ -1339,7 +1319,8 @@ cwIDAQAB
         println!("Stored refresh token: {}, exp: {}", refresh_token, exp);
 
         // Act: Exchange the refresh token for new tokens
-        let result = generator.exchange_refresh_token(refresh_token, client_id, scope, tbid.clone());
+        let result =
+            generator.exchange_refresh_token(refresh_token, client_id, scope, tbid.clone());
 
         assert!(result.is_ok(), "Failed to exchange refresh token");
         let (access_token, new_refresh_token) = result.unwrap();
@@ -1370,7 +1351,6 @@ cwIDAQAB
         Ok(())
     }
 
-    
     #[test]
     async fn test_exchange_refresh_token_with_invalid_token() {
         let private_key = vec![];
@@ -1387,7 +1367,8 @@ cwIDAQAB
         );
 
         // Act: Try exchanging an invalid refresh token
-        let result = generator.exchange_refresh_token("invalid_refresh_token", "client_id", "read", None);
+        let result =
+            generator.exchange_refresh_token("invalid_refresh_token", "client_id", "read", None);
 
         // Assert
         assert!(result.is_err(), "Invalid refresh token should fail");
@@ -1433,9 +1414,6 @@ cwIDAQAB
         );
     }
 
-
-
-    
     #[test]
     async fn test_cleanup_expired_tokens() -> Result<(), TokenError> {
         let private_key = vec![];
@@ -1460,10 +1438,22 @@ cwIDAQAB
         let current_time = get_current_time()?;
 
         // Store an expired token (expired 100 seconds ago)
-        token_store.store_refresh_token(expired_token, client_id, user_id, current_time - 100, None)?;
+        token_store.store_refresh_token(
+            expired_token,
+            client_id,
+            user_id,
+            current_time - 100,
+            None,
+        )?;
 
         // Store a valid token that expires in 2 hours (7200 seconds from now)
-        token_store.store_refresh_token(valid_token, client_id, user_id, current_time + 7200, None)?;
+        token_store.store_refresh_token(
+            valid_token,
+            client_id,
+            user_id,
+            current_time + 7200,
+            None,
+        )?;
 
         println!("Before cleanup:");
         println!(
@@ -1501,7 +1491,6 @@ cwIDAQAB
         Ok(())
     }
 
-    
     // Test for generating JWT access tokens
     #[test]
     async fn test_generate_jwt_access_token() {
@@ -1541,7 +1530,6 @@ cwIDAQAB
         );
     }
 
-    
     // Test for validating a valid JWT token
     #[test]
     async fn test_validate_jwt_token() -> Result<(), TokenError> {
@@ -1595,7 +1583,6 @@ cwIDAQAB
         Ok(())
     }
 
-    
     // Test for validating a token with incorrect subject or tbid
     #[test]
     async fn test_validate_jwt_token_with_incorrect_tbid() -> Result<(), TokenError> {
@@ -1628,11 +1615,14 @@ cwIDAQAB
             None,             // No audience expected, so we pass None
             "user_id",        // Expected subject (user_id in the token)
             "read:documents", // Required scope (matching what was generated)
-            incorrect_tbid,  // Provide an incorrect tbid
+            incorrect_tbid,   // Provide an incorrect tbid
         );
 
         // Assert that the validation fails due to TBID mismatch
-        assert!(result.is_err(), "Validation should fail due to TBID mismatch");
+        assert!(
+            result.is_err(),
+            "Validation should fail due to TBID mismatch"
+        );
         assert_eq!(
             result.unwrap_err(),
             TokenError::InvalidGrant,
@@ -1642,7 +1632,6 @@ cwIDAQAB
         Ok(())
     }
 
-    
     // Test for generating and validating opaque tokens
     #[test]
     async fn test_generate_opaque_access_token() {
@@ -1657,7 +1646,8 @@ cwIDAQAB
         );
 
         // Opaque tokens do not support validation, expect UnsupportedOperation
-        let result = opaque_generator.validate_token(&token, None, "user_id", "read:documents", None);
+        let result =
+            opaque_generator.validate_token(&token, None, "user_id", "read:documents", None);
         assert!(
             result.is_err(),
             "Opaque tokens should not support validation"
@@ -1669,7 +1659,6 @@ cwIDAQAB
         );
     }
 
-    
     #[test]
     async fn test_validate_invalid_signature_jwt_token() {
         let jwt_generator = setup_jwt_generator(); // Normal JWT setup
@@ -1697,7 +1686,6 @@ cwIDAQAB
         assert_eq!(result.unwrap_err(), TokenError::InvalidSignature);
     }
 
-    
     #[test]
     async fn test_cleanup_expired_tokens_in_memory() {
         let store = InMemoryTokenStore::new();
@@ -1771,7 +1759,6 @@ cwIDAQAB
             assert!(revoked_tokens.contains_key("token4"));
         }
     }
-
 
     #[test]
     async fn test_cleanup_expired_tokens_with_real_time() {
@@ -1849,116 +1836,118 @@ cwIDAQAB
     }
 
     #[test]
-async fn test_redis_token_revoked() -> Result<(), TokenError> {
-    // Setup Redis connection and RedisTokenStore instance.
-    let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-    let store = RedisTokenStore {
-        conn: Arc::new(Mutex::new(client.get_connection().unwrap())),
-    };
+    async fn test_redis_token_revoked() -> Result<(), TokenError> {
+        // Setup Redis connection and RedisTokenStore instance.
+        let client = redis::Client::open("redis://127.0.0.1/").unwrap();
+        let store = RedisTokenStore {
+            conn: Arc::new(Mutex::new(client.get_connection().unwrap())),
+        };
 
-    // Revoke a token using the TokenStore trait method
-    let token = "test_token".to_string();
-    let exp = get_current_time()? + 3600; // Set expiration 1 hour from now
-    store.revoke_token(token.clone(), exp)?;
+        // Revoke a token using the TokenStore trait method
+        let token = "test_token".to_string();
+        let exp = get_current_time()? + 3600; // Set expiration 1 hour from now
+        store.revoke_token(token.clone(), exp)?;
 
-    // Check if the token is revoked.
-    assert_eq!(store.is_token_revoked(&token)?, true);
+        // Check if the token is revoked.
+        assert_eq!(store.is_token_revoked(&token)?, true);
 
-    Ok(())
-}
-#[test]
-async fn test_redis_cleanup_expired_tokens() -> Result<(), TokenError> {
-    // Setup Redis connection and RedisTokenStore instance.
-    let client = redis::Client::open("redis://127.0.0.1/").unwrap();
-    let store = RedisTokenStore {
-        conn: Arc::new(Mutex::new(client.get_connection().unwrap())),
-    };
+        Ok(())
+    }
+    #[test]
+    async fn test_redis_cleanup_expired_tokens() -> Result<(), TokenError> {
+        // Setup Redis connection and RedisTokenStore instance.
+        let client = redis::Client::open("redis://127.0.0.1/").unwrap();
+        let store = RedisTokenStore {
+            conn: Arc::new(Mutex::new(client.get_connection().unwrap())),
+        };
 
-    // Revoke a token with a short TTL (e.g., 2 seconds)
-    let token = "test_cleanup_token".to_string();
-    let ttl = 2; // 2 seconds
-    let exp = get_current_time()? + ttl;
-    store.revoke_token(token.clone(), exp)?;
+        // Revoke a token with a short TTL (e.g., 2 seconds)
+        let token = "test_cleanup_token".to_string();
+        let ttl = 2; // 2 seconds
+        let exp = get_current_time()? + ttl;
+        store.revoke_token(token.clone(), exp)?;
 
-    // Initially, token should be revoked
-    assert_eq!(store.is_token_revoked(&token)?, true);
+        // Initially, token should be revoked
+        assert_eq!(store.is_token_revoked(&token)?, true);
 
-    // Wait for the TTL to expire
-    std::thread::sleep(Duration::from_secs(3));
+        // Wait for the TTL to expire
+        std::thread::sleep(Duration::from_secs(3));
 
-    // Now, check if the token still exists in Redis
-    let mut conn = store.conn.lock().unwrap();
-    let exists: bool = redis::cmd("EXISTS")
-        .arg(&token)
-        .query(&mut *conn)
-        .unwrap();
+        // Now, check if the token still exists in Redis
+        let mut conn = store.conn.lock().unwrap();
+        let exists: bool = redis::cmd("EXISTS").arg(&token).query(&mut *conn).unwrap();
 
-    // After the TTL expires, the token should no longer exist
-    assert_eq!(exists, false, "Token should no longer exist in Redis after TTL expiration.");
+        // After the TTL expires, the token should no longer exist
+        assert_eq!(
+            exists, false,
+            "Token should no longer exist in Redis after TTL expiration."
+        );
 
-    Ok(())
-}
+        Ok(())
+    }
 
+    #[test]
+    async fn test_jwt_signing_rsa() {
+        // Set the JWT_PRIVATE_KEY environment variable for testing purposes
+        env::set_var("JWT_PRIVATE_KEY", RSA_PRIVATE_KEY);
 
-#[test]
-async fn test_jwt_signing_rsa() {
-    // Set the JWT_PRIVATE_KEY environment variable for testing purposes
-    env::set_var("JWT_PRIVATE_KEY", RSA_PRIVATE_KEY);
+        // Initialize JwtTokenGenerator with sample keys
+        let token_store = Arc::new(MockTokenStore::new());
+        let jwt_generator = JwtTokenGenerator::new(
+            RSA_PRIVATE_KEY.as_bytes().to_vec(),
+            RSA_PUBLIC_KEY.as_bytes().to_vec(),
+            "issuer".to_string(),
+            Duration::from_secs(3600),
+            Duration::from_secs(7200),
+            token_store.clone(),
+        );
 
-    // Initialize JwtTokenGenerator with sample keys
-    let token_store = Arc::new(MockTokenStore::new());
-    let jwt_generator = JwtTokenGenerator::new(
-        RSA_PRIVATE_KEY.as_bytes().to_vec(),
-        RSA_PUBLIC_KEY.as_bytes().to_vec(),
-        "issuer".to_string(),
-        Duration::from_secs(3600),
-        Duration::from_secs(7200),
-        token_store.clone(),
-    );
+        let claims = Claims {
+            sub: "client_id".to_string(),
+            exp: (SystemTime::now() + Duration::from_secs(3600))
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            scope: Some("read write".to_string()),
+            aud: None,
+            client_id: None,
+            iat: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            iss: Some("issuer".to_string()),
+            tbid: Some("mock_tbid".to_string()), // Include TBID
+        };
 
-    let claims = Claims {
-        sub: "client_id".to_string(),
-        exp: (SystemTime::now() + Duration::from_secs(3600))
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-        scope: Some("read write".to_string()),
-        aud: None,
-        client_id: None,
-        iat: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-        iss: Some("issuer".to_string()),
-        tbid: Some("mock_tbid".to_string()), // Include TBID
-    };
+        // Sign the token using JwtTokenGenerator
+        let token = jwt_generator
+            .sign_token(&claims)
+            .expect("Failed to sign with RSA");
+        assert!(!token.is_empty());
 
-    // Sign the token using JwtTokenGenerator
-    let token = jwt_generator.sign_token(&claims).expect("Failed to sign with RSA");
-    assert!(!token.is_empty());
+        // Optionally, decode the token to verify the claims
+        let decoding_key = DecodingKey::from_rsa_pem(RSA_PUBLIC_KEY.as_bytes()).unwrap();
+        let token_data =
+            decode::<Claims>(&token, &decoding_key, &Validation::new(Algorithm::RS256)).unwrap();
 
-    // Optionally, decode the token to verify the claims
-    let decoding_key = DecodingKey::from_rsa_pem(RSA_PUBLIC_KEY.as_bytes()).unwrap();
-    let token_data =
-        decode::<Claims>(&token, &decoding_key, &Validation::new(Algorithm::RS256)).unwrap();
-
-    assert_eq!(
-        token_data.claims.sub, "client_id",
-        "Subject should match the user_id"
-    );
-    assert_eq!(
-        token_data.claims.scope.as_deref(),
-        Some("read write"),
-        "Scope should match"
-    );
-    assert_eq!(
-        token_data.claims.iss.as_deref(),
-        Some("issuer"),
-        "Issuer should match"
-    );
-    assert_eq!(
-        token_data.claims.tbid.as_deref(),
-        Some("mock_tbid"),
-        "TBID should match"
-    );
-}
-
-
+        assert_eq!(
+            token_data.claims.sub, "client_id",
+            "Subject should match the user_id"
+        );
+        assert_eq!(
+            token_data.claims.scope.as_deref(),
+            Some("read write"),
+            "Scope should match"
+        );
+        assert_eq!(
+            token_data.claims.iss.as_deref(),
+            Some("issuer"),
+            "Issuer should match"
+        );
+        assert_eq!(
+            token_data.claims.tbid.as_deref(),
+            Some("mock_tbid"),
+            "TBID should match"
+        );
+    }
 }

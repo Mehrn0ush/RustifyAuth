@@ -153,7 +153,6 @@ impl TokenGenerator for MockTokenGeneratorintro {
         _sub: &str,
         _required_scope: &str,
         tbid: Option<String>,
-
     ) -> Result<TokenData<Claims>, TokenError> {
         let is_expired = self
             .expired_tokens
@@ -179,7 +178,7 @@ impl TokenGenerator for MockTokenGeneratorintro {
             iss: Some("test_issuer".to_string()),
             aud: None,
             scope: Some("read".to_string()),
-            tbid: None
+            tbid: None,
         };
 
         //Debugging output to track expiration
