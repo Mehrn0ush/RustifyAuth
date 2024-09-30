@@ -23,17 +23,20 @@ impl StorageBackend for SqlStorage {
             let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
                 // Perform the asynchronous SQL operation
-                let result = sqlx::query("SELECT client_id, secret, allowed_scopes FROM clients WHERE client_id = $1")
-                    .bind(client_id)
-                    .fetch_optional(&self.pool)  // Await the async SQL query
-                    .await;
+                let result = sqlx::query(
+                    "SELECT client_id, secret, allowed_scopes FROM clients WHERE client_id = $1",
+                )
+                .bind(client_id)
+                .fetch_optional(&self.pool) // Await the async SQL query
+                .await;
 
                 match result {
                     Ok(Some(row)) => {
                         let client_data = ClientData {
                             client_id: row.get("client_id"),
                             secret: row.get("secret"),
-                            allowed_scopes: row.get::<String, _>("allowed_scopes")
+                            allowed_scopes: row
+                                .get::<String, _>("allowed_scopes")
                                 .split(',')
                                 .map(String::from)
                                 .collect(),

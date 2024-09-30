@@ -1,8 +1,8 @@
-use otpauth::TOTP;
-use crate::security::rate_limit::RateLimiter;
-use std::sync::Arc;
 use crate::core::authorization::AuthorizationError;
-use rand::{Rng, distributions::Alphanumeric};
+use crate::security::rate_limit::RateLimiter;
+use otpauth::TOTP;
+use rand::{distributions::Alphanumeric, Rng};
+use std::sync::Arc;
 
 // Assuming you have some AuthenticationService that handles password validation.
 pub struct AuthenticationService;
@@ -29,7 +29,10 @@ impl TotpService {
             .map(char::from)
             .collect();
         println!("TOTP Secret: {}", secret); // Save or display this for the user to scan
-        TotpService { secret, rate_limiter }
+        TotpService {
+            secret,
+            rate_limiter,
+        }
     }
 
     // Manually create a URL for the QR code that Google Authenticator can scan
@@ -43,14 +46,20 @@ impl TotpService {
     }
 
     // Validate the TOTP code the user provides, using rate limiting
-    pub fn validate_totp_code(&self, user_id: &str, code: &str) -> Result<bool, AuthorizationError> {
+    pub fn validate_totp_code(
+        &self,
+        user_id: &str,
+        code: &str,
+    ) -> Result<bool, AuthorizationError> {
         // Use the rate limiter to prevent brute force attacks
         if self.rate_limiter.is_rate_limited(user_id) {
             return Err(AuthorizationError::RateLimited); // Assuming `RateLimited` is a variant of `AuthorizationError`
         }
 
         // Parse the provided TOTP code (string) into a u32
-        let parsed_code = code.parse::<u32>().map_err(|_| AuthorizationError::InvalidTotpCode)?;
+        let parsed_code = code
+            .parse::<u32>()
+            .map_err(|_| AuthorizationError::InvalidTotpCode)?;
 
         let totp = TOTP::from_base32(&self.secret).unwrap(); // Create TOTP from the secret
 
@@ -76,11 +85,11 @@ impl TotpService {
 
 // The authorize_user function will now handle TOTP validation during login
 pub fn authorize_user(
-    auth_service: &AuthenticationService,  // Passing the auth service as a parameter
+    auth_service: &AuthenticationService, // Passing the auth service as a parameter
     totp_service: &TotpService,
-    username: &str, 
-    password: &str, 
-    totp_code: &str
+    username: &str,
+    password: &str,
+    totp_code: &str,
 ) -> Result<(), AuthorizationError> {
     // Validate username and password (using your existing logic)
     if !auth_service.validate_password(username, password) {

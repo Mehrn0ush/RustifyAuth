@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::time::{SystemTime, Duration};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime};
 
 pub struct RateLimiter {
     requests: Mutex<HashMap<String, (u64, SystemTime)>>, // Track requests and timestamp keyed by client ID
-    max_requests: u64,        // Maximum allowed requests
-    window_size: Duration,    // Sliding window duration (e.g., 1 minute)
+    max_requests: u64,                                   // Maximum allowed requests
+    window_size: Duration,                               // Sliding window duration (e.g., 1 minute)
 }
 
 impl RateLimiter {
@@ -29,7 +29,7 @@ impl RateLimiter {
             }
 
             *last_request_time = current_time;
-            
+
             if *count >= self.max_requests {
                 return true; // Rate limit exceeded
             }

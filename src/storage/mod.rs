@@ -2,6 +2,7 @@ pub mod memory;
 pub mod redis;
 pub mod sql;
 use crate::error::OAuthError;
+pub mod client;
 
 pub use memory::{CodeStore, TokenStore};
 
@@ -24,4 +25,3 @@ pub trait StorageBackend {
     /// A `Result<Option<ClientData>, OAuthError>`.
     fn get_client_by_id(&self, client_id: &str) -> Result<Option<ClientData>, OAuthError>;
 }
-
