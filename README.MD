@@ -22,7 +22,7 @@ cargo build
 RustifyAuth comes with a comprehensive test suite. To run the tests, execute:
 ```bash
 cargo test
-
+```
 
 ## Hacktoberfest 2024
 We are participating in Hacktoberfest 2024! Contributions are welcome, whether you’re fixing bugs, writing documentation, writing tests, or adding new features. Check out the [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and look for issues labeled with "hacktoberfest" to find what you can work on.
