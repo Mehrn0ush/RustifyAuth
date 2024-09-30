@@ -55,6 +55,10 @@ custom_cert.pem: A custom certificate used for encrypting data.
 custom_key.pem: The private key corresponding to the custom certificate.
 These keys and certificates are self-signed and intended solely for testing.
 
+The custom_cert.srl file is a serial number file used by OpenSSL when generating certificates. It keeps track of the serial numbers of the certificates that have been signed by the Certificate Authority (CA).
+
+
+
 How to Generate Your Own Keys and Certificates
 You can generate your own public and private keys using OpenSSL. Here is a step-by-step guide on how to do this:
 
