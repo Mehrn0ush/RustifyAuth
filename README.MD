@@ -43,7 +43,57 @@ RustifyAuth comes with a comprehensive suite of unit and integration tests. To e
 cargo test
 ```
 
+### Notes
+For testing purposes, the repository includes client_cert.pem, client_key.pem, custom_cert.pem, and custom_key.pem. These files are used for the Dynamic Client Registration as per RFC 7591 and are provided for local development and testing only.
 
+Note: The keys and certificates in this repository are not intended for production use. Please generate your own keys and certificates if you intend to use this in a live environment.
+
+Public and Private Key Files
+client_cert.pem: The client certificate used during the registration process.
+client_key.pem: The private key corresponding to the client certificate.
+custom_cert.pem: A custom certificate used for encrypting data.
+custom_key.pem: The private key corresponding to the custom certificate.
+These keys and certificates are self-signed and intended solely for testing.
+
+How to Generate Your Own Keys and Certificates
+You can generate your own public and private keys using OpenSSL. Here is a step-by-step guide on how to do this:
+
+### Generate a Private Key
+Run the following command to generate a 2048-bit private key:
+```bash
+openssl genrsa -out client_key.pem 2048
+```
+### Generate a Certificate Signing Request (CSR)
+Use the private key to generate a certificate signing request:
+
+```bash
+openssl req -new -key client_key.pem -out client.csr
+```
+### Generate a Self-Signed Certificate
+Create a self-signed certificate from the CSR, valid for 365 days:
+
+```bash
+openssl x509 -req -days 365 -in client.csr -signkey client_key.pem -out client_cert.pem
+```
+### Generate a Custom Private Key and Certificate
+You can also generate a custom private key and certificate for additional use:
+```bash
+openssl genrsa -out custom_key.pem 2048
+openssl req -new -key custom_key.pem -out custom.csr
+openssl x509 -req -days 365 -in custom.csr -signkey custom_key.pem -out custom_cert.pem
+```
+
+### Using the Keys for Testing
+These keys are used in the Dynamic Client Registration process for securing communications and authenticating clients. In your local testing environment, you can simply point to these keys in the relevant configuration files or environment variables.
+
+### Example:
+
+client_key.pem and client_cert.pem will be used during client registration.
+custom_key.pem and custom_cert.pem can be used for other secure communication scenarios.
+Feel free to generate your own certificates if you prefer not to use the provided ones for testing.
+
+Security Notice
+Do not use the provided certificates and private keys in production environments. Always generate your own secure keys for production deployments to ensure the safety of your application and users.
 
 ## 🎉 Hacktoberfest 2024
 
