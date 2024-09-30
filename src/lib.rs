@@ -1,11 +1,10 @@
 use crate::core::authorization::AuthorizationCodeFlow;
-use crate::core::authorization::MockTokenGenerator; // Correct module for MockTokenGenerator
+use crate::core::authorization::MockTokenGenerator;
 use crate::storage::memory::MemoryCodeStore;
 use security::tls::configure_tls;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Expose the core, security, endpoints, and storage modules
 pub mod auth_middleware;
 pub mod authentication;
 pub mod core;
