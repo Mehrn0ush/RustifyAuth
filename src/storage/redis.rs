@@ -3,14 +3,15 @@ use crate::core::authorization::AuthorizationCode;
 use crate::core::types::TokenError;
 use crate::error::OAuthError;
 use crate::storage::{CodeStore, TokenStore};
+use dotenv::dotenv;
 use redis::Client;
 use redis::{Commands, Connection, RedisError};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections::HashSet;
-use std::sync::Mutex;
-
 use std::cell::RefCell;
+use std::collections::HashSet;
+use std::env;
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub struct RedisCodeStore {
@@ -279,11 +280,22 @@ pub struct RedisStorage {
 
 impl RedisStorage {
     /// Initialize a new Redis storage backend.
-    pub fn new(redis_url: &str) -> Result<Self, RedisError> {
+    pub fn new() -> Result<Self, RedisError> {
+        // Load the environment variables from the .env file
+        dotenv().ok();
+
+        // Get the Redis URL from the environment variable
+        let redis_url = env::var("REDIS_URL").expect("REDIS_URL must be set in .env");
+
+        // Initialize the Redis client
         let client = Client::open(redis_url)?;
         Ok(RedisStorage {
             redis_client: client,
         })
+    }
+
+    pub fn get_connection(&self) -> Result<Connection, RedisError> {
+        self.redis_client.get_connection()
     }
 }
 
