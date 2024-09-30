@@ -26,13 +26,14 @@ To install and build **RustifyAuth** locally, clone the repository and use Cargo
 git clone https://github.com/Mehrn0ush/RustifyAuth.git
 cd RustifyAuth
 cargo build
+```
 
 ### Running the Server
 Once you've built the project, you can start the server by running:
 
 ```bash
 cargo run
-
+```
 
 ### 🔧 Running Tests
 
@@ -40,7 +41,7 @@ RustifyAuth comes with a comprehensive suite of unit and integration tests. To e
 
 ```bash
 cargo test
-
+```
 
 
 
