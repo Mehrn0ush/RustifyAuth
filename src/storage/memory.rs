@@ -136,6 +136,7 @@ impl TokenStore for MemoryTokenStoreTrait {
                 expiration: exp,
                 client_id: client_id.to_string(),
                 user_id: user_id.to_string(),
+                tbid: None,
             },
         );
         Ok(())
@@ -173,6 +174,7 @@ impl TokenStore for MemoryTokenStoreTrait {
                 expiration: exp,
                 client_id: client_id.to_string(),
                 user_id: user_id.to_string(),
+                tbid: None,
             },
         );
         Ok(())

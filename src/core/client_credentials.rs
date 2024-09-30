@@ -79,6 +79,7 @@ pub fn issue_token(
         aud: None,
         client_id: Some(client.client_id.clone()),
         iss: Some("your_issuer_identifier".to_string()),
+        tbid: None,
     };
 
     // Specify the signing algorithm

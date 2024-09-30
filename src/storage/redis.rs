@@ -334,6 +334,7 @@ mod tests {
             pkce_challenge: "challenge_123".to_string(),
             scope: "read".to_string(),
             expires_at: std::time::SystemTime::now(),
+            tbid: None,
         };
 
         code_store.store_code(code.clone());

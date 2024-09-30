@@ -46,6 +46,7 @@ pub struct AuthorizationCode {
     pub pkce_challenge: String,
     pub scope: String, // Store the requested scopes
     pub expires_at: std::time::SystemTime,
+    pub tbid: Option<String>,
 }
 
 // Implement the From trait for automatic conversion
@@ -104,6 +105,7 @@ impl AuthorizationCodeFlow {
         redirect_uri: &str,
         pkce_verifier: &str,
         scope: &str,
+        tbid: Option<String>,
     ) -> Result<AuthorizationCode, AuthorizationError> {
         // Validate the scope
         if !self.allowed_scopes.contains(&scope.to_string()) {
@@ -120,7 +122,8 @@ impl AuthorizationCodeFlow {
             client_id: client_id.to_owned(),
             redirect_uri: redirect_uri.to_owned(),
             pkce_challenge: pkce_challenge.to_owned(),
-            scope: scope.to_owned(), // save the scope
+            scope: scope.to_owned(),
+            tbid: tbid.clone(),
             expires_at,
         };
 
@@ -136,6 +139,7 @@ impl AuthorizationCodeFlow {
         code: &str,
         pkce_verifier: &str,
     ) -> Result<TokenResponse, TokenError> {
+
         eprintln!(
             "Attempting to retrieve the authorization code for: {}",
             code
@@ -149,6 +153,8 @@ impl AuthorizationCodeFlow {
             "Authorization code retrieved successfully: {:?}",
             stored_code
         );
+        let tbid = stored_code.tbid.clone(); 
+
 
         // If the code is revoked, return an error
         if code_store.is_code_revoked(code) {
@@ -186,12 +192,14 @@ impl AuthorizationCodeFlow {
             &stored_code.client_id,
             &stored_code.code,
             &stored_code.scope,
+            tbid.clone(),
         )?;
 
         let refresh_token = self.token_generator.generate_refresh_token(
             &stored_code.client_id,
             &stored_code.code,
             &stored_code.scope,
+            tbid.clone(),
         )?;
 
         eprintln!("Token generation succeeded.");
@@ -291,6 +299,7 @@ impl TokenGenerator for MockTokenGenerator {
         refresh_token: &str,
         client_id: &str,
         scope: &str,
+        tbid: Option<String>,
     ) -> Result<(String, String), TokenError> {
         Ok((
             "mock_access_token".to_string(),
@@ -302,6 +311,7 @@ impl TokenGenerator for MockTokenGenerator {
         _client_id: &str,
         _user_id: &str,
         _scope: &str,
+        tbid: Option<String>,
     ) -> Result<String, TokenError> {
         Ok("mock_access_token".to_string())
     }
@@ -311,6 +321,7 @@ impl TokenGenerator for MockTokenGenerator {
         _client_id: &str,
         _user_id: &str,
         _scope: &str,
+        tbid: Option<String>,
     ) -> Result<String, TokenError> {
         Ok("mock_refresh_token".to_string())
     }
@@ -321,6 +332,7 @@ impl TokenGenerator for MockTokenGenerator {
         _aud: Option<&str>,
         sub: &str,
         required_scope: &str,
+        tbid: Option<String>,
     ) -> Result<TokenData<Claims>, TokenError> {
         if token == "mock_access_token" {
             let now = SystemTime::now();
@@ -338,6 +350,7 @@ impl TokenGenerator for MockTokenGenerator {
                 client_id: Some("client_id".to_string()), // mock client_id validation
                 iat: now.duration_since(UNIX_EPOCH).unwrap().as_secs(),
                 iss: Some("example_issuer".to_string()),
+                tbid,
             };
 
             // Return valid token data
@@ -359,6 +372,7 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
         _client_id: &str,
         _user_id: &str,
         _scope: &str,
+        tbid: Option<String>,
     ) -> Result<String, TokenError> {
         let token = "mock_access_token".to_string();
         let now = SystemTime::now();
@@ -376,6 +390,7 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
         _client_id: &str,
         _user_id: &str,
         _scope: &str,
+        tbid: Option<String>,
     ) -> Result<String, TokenError> {
         let token = "mock_refresh_token".to_string();
         let now = SystemTime::now();
@@ -394,6 +409,7 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
         _aud: Option<&str>,
         sub: &str,
         required_scope: &str,
+        tbid: Option<String>,
     ) -> Result<TokenData<Claims>, TokenError> {
         if token == "mock_access_token" {
             let now = SystemTime::now();
@@ -413,6 +429,7 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
                         client_id: Some(sub.to_string()), // Mock client_id validation
                         iat: now.duration_since(UNIX_EPOCH).unwrap().as_secs(),
                         iss: Some("example_issuer".to_string()),
+                        tbid,
                     },
                 });
             }
@@ -443,6 +460,7 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
                         client_id: Some("example_client_id".to_string()),
                         iat: creation_time.duration_since(UNIX_EPOCH).unwrap().as_secs(),
                         iss: Some("example_issuer".to_string()),
+                        tbid,
                     },
                 });
             } else if token == "mock_refresh_token" && elapsed <= self.refresh_token_lifetime {
@@ -459,6 +477,7 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
                         client_id: Some("example_client_id".to_string()),
                         iat: creation_time.duration_since(UNIX_EPOCH).unwrap().as_secs(),
                         iss: Some("example_issuer".to_string()),
+                        tbid,
                     },
                 });
             } else {
@@ -478,6 +497,7 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
         refresh_token: &str,
         client_id: &str,
         scope: &str,
+        tbid: Option<String>,
     ) -> Result<(String, String), TokenError> {
         // Mock implementation of refresh token exchange
         Ok((
@@ -486,6 +506,8 @@ impl TokenGenerator for MockTokenGeneratorWithExpiry {
         ))
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
@@ -501,6 +523,8 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime};
+
+
 
     // Test for generating a valid authorization code
     #[test]
@@ -540,7 +564,7 @@ mod tests {
             .collect();
 
         let auth_code = auth_code_flow
-            .generate_authorization_code("client_id", "redirect_uri", &pkce_verifier, scope)
+            .generate_authorization_code("client_id", "redirect_uri", &pkce_verifier, scope, None)
             .unwrap();
 
         assert!(!auth_code.code.is_empty());
@@ -579,6 +603,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
+                None
             )
             .unwrap();
 
@@ -643,6 +668,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
+                None
             )
             .unwrap();
 
@@ -707,6 +733,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
+                None
             )
             .unwrap();
 
@@ -800,6 +827,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
+                None
             )
             .unwrap();
 
@@ -817,6 +845,8 @@ mod tests {
             None,
             &auth_code.code,
             "read:documents",
+            None
+            
         );
 
         assert!(
@@ -863,6 +893,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
+                None
             )
             .unwrap();
 
@@ -920,6 +951,7 @@ mod tests {
             "redirect_uri",
             &pkce_verifier,
             "invalid_scope",
+            None
         );
 
         assert!(result.is_err(), "Expected error due to invalid scope.");
@@ -957,6 +989,7 @@ mod tests {
             "redirect_uri",
             &invalid_verifier, // Use invalid_verifier here
             "read:documents",
+            None
         );
 
         // The generation should fail due to the invalid verifier
@@ -1006,6 +1039,7 @@ mod tests {
                 "redirect_uri",
                 &pkce_verifier,
                 "read:documents",
+                None
             )
             .unwrap();
 

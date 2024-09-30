@@ -64,7 +64,7 @@ pub async fn introspect_token(
 
     // Step 3: Validate the token using the token generator (check for validity)
     let token_data = token_generator
-        .validate_token(&req.token, None, "", "") // Adjust based on your audience/sub check
+        .validate_token(&req.token, None, "", "", None) // Adjust based on your audience/sub check
         .map_err(|_| TokenError::InvalidToken)?;
 
     let claims = token_data.claims;
@@ -138,6 +138,7 @@ impl TokenGenerator for MockTokenGeneratorintro {
         refresh_token: &str,
         client_id: &str,
         scope: &str,
+        tbid: Option<String>,
     ) -> Result<(String, String), TokenError> {
         // Implement a mock refresh token exchange logic
         Ok((
@@ -151,6 +152,8 @@ impl TokenGenerator for MockTokenGeneratorintro {
         _aud: Option<&str>,
         _sub: &str,
         _required_scope: &str,
+        tbid: Option<String>,
+
     ) -> Result<TokenData<Claims>, TokenError> {
         let is_expired = self
             .expired_tokens
@@ -176,6 +179,7 @@ impl TokenGenerator for MockTokenGeneratorintro {
             iss: Some("test_issuer".to_string()),
             aud: None,
             scope: Some("read".to_string()),
+            tbid: None
         };
 
         //Debugging output to track expiration
@@ -209,6 +213,7 @@ impl TokenGenerator for MockTokenGeneratorintro {
         _client_id: &str,
         _user_id: &str,
         _scope: &str,
+        _tbid: Option<String>,
     ) -> Result<String, TokenError> {
         // Mocking access token generation
         Ok("mock_access_token".to_string())
@@ -219,6 +224,7 @@ impl TokenGenerator for MockTokenGeneratorintro {
         _client_id: &str,
         _user_id: &str,
         _scope: &str,
+        _tbid: Option<String>,
     ) -> Result<String, TokenError> {
         // Mocking refresh token generation
         Ok("mock_refresh_token".to_string())
@@ -263,6 +269,7 @@ impl TokenStore for MockTokenStore {
                 expiration: exp,
                 client_id: client_id.to_string(),
                 user_id: user_id.to_string(),
+                tbid: None,
             },
         );
         Ok(())

@@ -27,6 +27,8 @@ pub enum TokenError {
     ExpiredToken,
     InvalidSignature,
     UnsupportedOperation,
+    InvalidTokenBinding,     
+    MissingTokenBinding,     
 }
 
 // Define TokenRequest struct (adjust fields based on your OAuth 2.0 implementation)
@@ -43,4 +45,13 @@ pub struct TokenRequest {
     pub pkce_verifier: Option<String>,
     pub device_code: Option<String>, // For device flow
     pub extra_params: Option<std::collections::HashMap<String, String>>, // For extension grants
+}
+
+
+// Define RegistrationError for RBAC
+#[derive(Debug, PartialEq)]
+pub enum RegistrationError {
+    UnauthorizedClient,
+    InvalidRequest,
+    InvalidGrant,
 }

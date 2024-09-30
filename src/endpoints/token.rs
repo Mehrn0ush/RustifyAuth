@@ -1,21 +1,16 @@
 use crate::core::authorization::AuthorizationCodeFlow;
-use crate::core::extension_grants::CustomGrant;
-use crate::core::extension_grants::DeviceFlowHandler;
-use crate::core::extension_grants::ExtensionGrantHandler;
+use crate::core::extension_grants::{CustomGrant, DeviceFlowHandler, ExtensionGrantHandler};
 use crate::core::pkce::validate_pkce_challenge;
-use crate::core::token;
-use crate::core::token::TokenRevocation;
+use crate::core::token::{TokenRevocation, TokenGenerator, extract_tbid};
 use crate::core::types::{TokenError, TokenRequest, TokenResponse};
 use crate::endpoints::revoke::RevokeTokenRequest;
 use crate::security::rate_limit::RateLimiter;
 use crate::storage::memory::TokenStore;
-use actix_web::ResponseError;
-use actix_web::{web, HttpResponse, Result};
+use actix_web::{web, HttpResponse, Result, HttpRequest, ResponseError};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::fmt;
 
 // Error Display Implementation
 impl std::fmt::Display for TokenError {
@@ -28,12 +23,17 @@ impl ResponseError for TokenError {
     fn error_response(&self) -> HttpResponse {
         match *self {
             TokenError::InvalidGrant => HttpResponse::BadRequest().body("Invalid grant"),
-            TokenError::UnsupportedGrantType => {
-                HttpResponse::BadRequest().body("Unsupported grant type")
-            }
+            TokenError::UnsupportedGrantType => HttpResponse::BadRequest().body("Unsupported grant type"),
             TokenError::MissingFields => HttpResponse::BadRequest().body("Missing fields"),
             TokenError::RateLimited => HttpResponse::TooManyRequests().body("Rate limited"),
             TokenError::InternalError => HttpResponse::InternalServerError().body("Internal error"),
+            TokenError::InvalidSignature => HttpResponse::Unauthorized().body("Invalid signature"),
+            TokenError::ExpiredToken => HttpResponse::Unauthorized().body("Expired token"),
+            TokenError::InsufficientScope => HttpResponse::Forbidden().body("Insufficient scope"),
+            TokenError::InvalidClient => HttpResponse::Unauthorized().body("Invalid client"),
+            TokenError::UnsupportedOperation => HttpResponse::BadRequest().body("Unsupported operation"),
+            TokenError::InvalidTokenBinding => HttpResponse::Unauthorized().body("Invalid Token Binding"),
+            TokenError::MissingTokenBinding => HttpResponse::BadRequest().body("Missing Token Binding"),
             _ => HttpResponse::InternalServerError().body("Unknown error"),
         }
     }
@@ -41,43 +41,87 @@ impl ResponseError for TokenError {
 
 // Token endpoint supporting authorization code, extension grants, and device flow
 pub async fn token_endpoint(
-    req: web::Form<TokenRequest>,
+    req: HttpRequest,
+    form: web::Form<TokenRequest>,
+    token_generator: Arc<dyn TokenGenerator>,
+    token_store: Arc<dyn TokenStore>,
     rate_limiter: Arc<RateLimiter>, // Rate limiter to protect from abuse
     auth_code_flow: Option<Arc<Mutex<AuthorizationCodeFlow>>>, // Optional for authorization code flow
     device_flow_handler: Option<Arc<dyn DeviceFlowHandler>>,   // Optional for device flow
     extension_grant_handler: Option<Arc<dyn ExtensionGrantHandler>>, // Optional for extension grant handler
 ) -> Result<HttpResponse, TokenError> {
+    let tbid = extract_tbid(&req)?;
+
     // Check rate-limiting before proceeding
-    if rate_limiter.is_rate_limited(&req.client_id) {
+    if rate_limiter.is_rate_limited(&form.client_id) {
         return Err(TokenError::RateLimited);
     }
 
-    match req.grant_type.as_str() {
+    match form.grant_type.as_str() {
         // Handle Authorization Code Flow
         "authorization_code" => {
             if let Some(auth_flow) = auth_code_flow {
-                handle_authorization_code_flow(&req, auth_flow).await
+                handle_authorization_code_flow(&form, auth_flow).await
             } else {
                 Err(TokenError::UnsupportedGrantType)
             }
         }
-        // Handle Device Code Flow
+
+        "refresh_token" => {
+            let refresh_token = form.refresh_token.as_ref().unwrap();
+            let scope = form.scope.as_deref().unwrap_or("default_scope");
+
+            let (access_token, new_refresh_token) = token_generator.exchange_refresh_token(
+                refresh_token,
+                &form.client_id,
+                scope,
+                Some(tbid.clone()),
+            )?;
+
+            Ok(HttpResponse::Ok().json(TokenResponse {
+                access_token,
+                token_type: "Bearer".to_string(),
+                expires_in: token_generator.access_token_lifetime().as_secs(),
+                refresh_token: new_refresh_token,
+                scope: Some(scope.to_string()),
+            }))
+        }
+
+        "client_credentials" => {
+            let scope = form.scope.as_deref().unwrap_or("default_scope");
+
+            let access_token = token_generator.generate_access_token(
+                &form.client_id,
+                "client_credentials_user",
+                scope,
+                Some(tbid.clone()),
+            )?;
+
+            Ok(HttpResponse::Ok().json(TokenResponse {
+                access_token,
+                token_type: "Bearer".to_string(),
+                expires_in: token_generator.access_token_lifetime().as_secs(),
+                refresh_token: "".to_string(), // No refresh token for client_credentials flow
+                scope: Some(scope.to_string()),
+            }))
+        }
+
         "urn:ietf:params:oauth:grant-type:device_code" => {
             if let Some(device_handler) = device_flow_handler {
-                handle_device_code_flow(&req, device_handler).await
+                handle_device_code_flow(&form, device_handler).await
             } else {
                 Err(TokenError::UnsupportedGrantType)
             }
         }
-        // Handle Extension Grants
+
         "urn:ietf:params:oauth:grant-type:custom-grant" => {
             if let Some(extension_handler) = extension_grant_handler {
-                handle_extension_grant_flow(&req, extension_handler).await
+                handle_extension_grant_flow(&form, extension_handler).await
             } else {
                 Err(TokenError::UnsupportedGrantType)
             }
         }
-        // Unsupported grant type
+
         _ => Ok(HttpResponse::BadRequest().body("Unsupported grant type")),
     }
 }
@@ -161,20 +205,28 @@ pub struct Claims {
     pub iat: u64,
     pub iss: Option<String>,
 }
-
 // Token revocation endpoint handler
 pub async fn revoke_token_endpoint(
-    req: web::Form<RevokeTokenRequest>,
-    token_store: Arc<Mutex<dyn TokenStore>>, // Shared token store wrapped in Mutex
+    req: HttpRequest, 
+    form: web::Form<RevokeTokenRequest>,
+    token_store: Arc<Mutex<dyn TokenStore>>,
 ) -> Result<HttpResponse, TokenError> {
+    // Pass the full HttpRequest instead of req.head()
+    let tbid = extract_tbid(&req)?;
+
     // Lock the token store to allow safe modification
     let mut token_store = token_store.lock().map_err(|_| TokenError::InternalError)?;
 
-    // Validate the token and client credentials
-    let token = req.token.clone();
+    // Extract token from Authorization header
+    let token = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.replace("Bearer ", ""))
+        .ok_or(TokenError::MissingFields)?;
 
     // Revoke the token using the appropriate method from `TokenRevocation`
-    if req.token_type_hint.as_deref() == Some("refresh_token") {
+    if form.token_type_hint.as_deref() == Some("refresh_token") {
         if !token_store.revoke_refresh_token(&token) {
             return Err(TokenError::InvalidRequest); // Handle case where revocation fails
         }
@@ -187,3 +239,4 @@ pub async fn revoke_token_endpoint(
 
     Ok(HttpResponse::Ok().body("Token revoked"))
 }
+

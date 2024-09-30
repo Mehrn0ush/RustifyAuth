@@ -104,6 +104,7 @@ mod tests {
             client_id: None,
             iat: 1234567890,
             iss: Some("issuer".to_string()),
+            tbid: None,
         };
         let token = sign_with_dilithium(&claims).expect("Failed to sign with Dilithium");
         assert!(!token.is_empty());
@@ -119,6 +120,7 @@ mod tests {
             client_id: None,
             iat: 1234567890,
             iss: Some("issuer".to_string()),
+            tbid: None,
         };
         let token = sign_with_falcon(&claims).expect("Failed to sign with Falcon");
         assert!(!token.is_empty());
