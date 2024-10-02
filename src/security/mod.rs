@@ -4,6 +4,7 @@ pub mod access_control;
 pub mod csrf;
 pub mod encryption;
 pub mod mfa;
+pub mod oidc_security;
 pub mod pkce;
 pub mod rate_limit;
 pub mod tls;

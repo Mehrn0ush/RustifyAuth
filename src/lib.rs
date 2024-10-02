@@ -14,6 +14,11 @@ pub mod jwt;
 pub mod routes;
 pub mod security;
 pub mod storage;
+pub mod oidc {
+    pub mod claims;
+    pub mod discovery;
+    pub mod jwks;
+}
 
 // Public function to expose TLS setup as part of the library's API
 pub fn setup_tls() -> rustls::ClientConfig {

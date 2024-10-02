@@ -40,3 +40,5 @@ log = "0.4.22"
 bcrypt = "0.15.1"
 wiremock = "0.6.2"
 reqwest = { version= "0.12.8", features = ["json"] }
+hex = "0.4.3"
+rsa = "0.9.6"
