@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_rbac_check_success() {
-        dotenv::dotenv().ok(); // Ensure .env is loaded
+        dotenv::dotenv().ok(); // Load environment variables from .env
 
         // Retrieve the JWT_SECRET from the environment
         let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
@@ -234,5 +234,44 @@ mod tests {
 
         // Ensure the result is Ok, meaning the role was validated successfully
         assert!(result.is_ok(), "Expected Ok, but got: {:?}", result);
+    }
+
+    #[test]
+    fn test_extract_roles_success() {
+        dotenv::dotenv().ok(); // Ensure .env is loaded for consistency
+
+        // Ensure JWT_SECRET is set in the environment
+        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
+
+        // Define the claims
+        let claims = TestClaims {
+            sub: "user123".to_string(),
+            exp: 9999999999,
+            roles: vec!["admin".to_string(), "user".to_string()],
+        };
+
+        // Generate the test token using the JWT_SECRET from environment
+        let token = generate_test_token(claims, &jwt_secret);
+
+        // Log the generated token for debugging
+        println!("Generated token: {}", token);
+
+        // Extract roles
+        let result = extract_roles(&token);
+
+        // Log the result for debugging
+        println!("Extract roles result: {:?}", result);
+
+        // Assert that the result is OK
+        assert!(
+            result.is_ok(),
+            "Expected result to be Ok, but got: {:?}",
+            result
+        );
+
+        // Get roles and check if they contain the expected values
+        let roles = result.unwrap();
+        assert!(roles.contains(&"admin".to_string()));
+        assert!(roles.contains(&"user".to_string()));
     }
 }
