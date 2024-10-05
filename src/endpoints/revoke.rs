@@ -1,18 +1,17 @@
 use crate::core::token::InMemoryTokenStore;
 use crate::core::token::TokenStore;
 use crate::core::types::TokenError;
+use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use warp::http::StatusCode;
 use warp::{reject, reply, Filter, Reply};
-use actix_web::{web, HttpResponse};
-
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RevokeTokenRequest {
-    pub token: String,                   
-    pub token_type_hint: Option<String>, 
+    pub token: String,
+    pub token_type_hint: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -21,9 +20,9 @@ pub struct RevokeTokenResponse {
 }
 
 pub async fn revoke_token_endpoint(
-    req: web::Json<RevokeTokenRequest>,          
+    req: web::Json<RevokeTokenRequest>,
     token_store: web::Data<Arc<Mutex<dyn TokenStore>>>,
-) -> HttpResponse {                             
+) -> HttpResponse {
     let mut token_store = token_store.lock().unwrap();
 
     let token_type_hint = req.token_type_hint.as_deref();

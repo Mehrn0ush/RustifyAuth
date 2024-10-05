@@ -1,17 +1,16 @@
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm, TokenData};
-use crate::auth::mock::{MockUserAuthenticator, MockSessionManager};
-use std::collections::HashSet;
+use crate::auth::mock::{MockSessionManager, MockUserAuthenticator};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, TokenData, Validation};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::env;
-
 
 /// Struct representing the JWT claims.
 /// Adjust the fields based on your actual JWT structure.
 #[derive(Debug, Deserialize)]
 pub struct Claims {
-    pub sub: String,                // Subject (user identifier)
-    pub exp: i64,                 // Expiration time as UNIX timestamp
-    pub roles: Vec<String>,         // Roles assigned to the user
+    pub sub: String,        // Subject (user identifier)
+    pub exp: i64,           // Expiration time as UNIX timestamp
+    pub roles: Vec<String>, // Roles assigned to the user
 }
 
 /// Enum representing possible RBAC errors.
@@ -27,35 +26,13 @@ pub enum RbacError {
 /// Result type alias for RBAC operations.
 pub type RbacResult<T> = Result<T, RbacError>;
 
-/// Performs a Role-Based Access Control (RBAC) check.
-///
-/// # Arguments
-///
-/// * `token` - The bearer token to validate.
-/// * `required_role` - The role required to perform the action.
-///
-/// # Returns
-///
-/// * `Ok(())` if the token is valid and contains the required role.
-/// * `Err(RbacError)` otherwise.
-///
-/// # Example
-///
-/// ```
-/// use crate::authentication::rbac::{rbac_check, RbacError};
-///
-/// let token = "valid_jwt_token_here";
-/// match rbac_check(token, "admin") {
-///     Ok(_) => println!("Access granted"),
-///     Err(e) => println!("Access denied: {:?}", e),
-/// }
-/// ```
 pub fn rbac_check(token: &str, required_role: &str) -> RbacResult<()> {
     // Retrieve the JWT secret from environment variables
     let secret = env::var("JWT_SECRET").map_err(|_| RbacError::MissingJwtSecret)?;
+    println!("Using JWT_SECRET: {}", secret); // Log the secret
 
     // Define the validation parameters
-    let mut validation = Validation::new(Algorithm::HS256); 
+    let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
 
     // Create a HashSet of required claims
@@ -68,10 +45,13 @@ pub fn rbac_check(token: &str, required_role: &str) -> RbacResult<()> {
         token,
         &DecodingKey::from_secret(secret.as_ref()),
         &validation,
-    ).map_err(|err| match *err.kind() {
+    )
+    .map_err(|err| match *err.kind() {
         jsonwebtoken::errors::ErrorKind::ExpiredSignature => RbacError::ExpiredToken,
         _ => RbacError::InvalidToken,
     })?;
+
+    println!("Decoded token claims: {:?}", token_data.claims); // Log claims
 
     // Check if the required role is present
     if token_data.claims.roles.contains(&required_role.to_string()) {
@@ -80,7 +60,6 @@ pub fn rbac_check(token: &str, required_role: &str) -> RbacResult<()> {
         Err(RbacError::InsufficientRole)
     }
 }
-
 
 /// Helper function to extract roles from a token.
 /// This can be used if you need to access roles beyond RBAC checks.
@@ -102,7 +81,8 @@ pub fn extract_roles(token: &str) -> RbacResult<Vec<String>> {
         token,
         &DecodingKey::from_secret(secret.as_ref()),
         &validation,
-    ).map_err(|err| match *err.kind() {
+    )
+    .map_err(|err| match *err.kind() {
         jsonwebtoken::errors::ErrorKind::ExpiredSignature => RbacError::ExpiredToken,
         // Map additional error kinds to InvalidToken
         jsonwebtoken::errors::ErrorKind::InvalidToken
@@ -118,11 +98,10 @@ pub fn extract_roles(token: &str) -> RbacResult<Vec<String>> {
     Ok(token_data.claims.roles)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jsonwebtoken::{encode, Header, EncodingKey};
+    use jsonwebtoken::{encode, EncodingKey, Header};
     use std::env;
 
     #[derive(Debug, Serialize)]
@@ -138,22 +117,19 @@ mod tests {
         encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref())).unwrap()
     }
 
-
-
     #[test]
     fn test_rbac_check_invalid_token() {
         // Set the JWT_SECRET environment variable for testing
         env::set_var("JWT_SECRET", "test_secret");
-    
+
         let invalid_token = "invalid.token.value";
-    
+
         let result = rbac_check(invalid_token, "admin");
         assert!(matches!(result, Err(RbacError::InvalidToken)));
-    
+
         // Clean up
         env::remove_var("JWT_SECRET");
     }
-
 
     #[test]
     fn test_extract_roles_invalid_token() {
@@ -167,5 +143,66 @@ mod tests {
 
         // Clean up
         env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    fn test_rbac_check_expired_token() {
+        dotenv::dotenv().ok();
+
+        // Ensure JWT_SECRET is set in the environment
+        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
+
+        // Set the expiration time to a timestamp in the past
+        let past_timestamp = (chrono::Utc::now() - chrono::Duration::seconds(3600)).timestamp();
+
+        // Create claims for the test token
+        let claims = TestClaims {
+            sub: "user123".to_string(),
+            exp: past_timestamp, // Expired token
+            roles: vec!["admin".to_string()],
+        };
+
+        // Generate a test token using the JWT_SECRET
+        let token = generate_test_token(claims, &jwt_secret);
+
+        // Perform the RBAC check
+        let result = rbac_check(&token, "admin");
+
+        // Assert that the token is marked as expired
+        assert!(
+            matches!(result, Err(RbacError::ExpiredToken)),
+            "Expected ExpiredToken, but got: {:?}",
+            result
+        );
+    }
+    #[test]
+    fn test_rbac_check_missing_role() {
+        dotenv::dotenv().ok(); // Load environment variables from .env
+
+        // Ensure JWT_SECRET is set in the environment
+        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
+
+        // Define the claims with the role "user" and a valid future expiration time
+        let claims = TestClaims {
+            sub: "user123".to_string(),
+            exp: 9999999999,                 // Future expiration time
+            roles: vec!["user".to_string()], // Only 'user' role
+        };
+
+        // Generate the test JWT token using the JWT_SECRET
+        let token = generate_test_token(claims, &jwt_secret);
+
+        // Run the RBAC check for the "admin" role
+        let result = rbac_check(&token, "admin");
+
+        // Debugging output to track the result
+        println!("RBAC check result: {:?}", result);
+
+        // Ensure that the result matches the expected InsufficientRole error
+        assert!(
+            matches!(result, Err(RbacError::InsufficientRole)),
+            "Expected InsufficientRole, but got: {:?}",
+            result
+        );
     }
 }

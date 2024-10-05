@@ -4,6 +4,10 @@ use crate::core::token::{TokenGenerator, TokenRevocation};
 use crate::core::types::TokenError;
 use crate::endpoints::introspection::token::Token;
 use crate::storage::TokenStore;
+use actix_web::body::to_bytes;
+use actix_web::{body::BoxBody, web};
+use actix_web::{test, App};
+use actix_web::{HttpResponse, Responder, ResponseError};
 use async_trait::async_trait;
 use jsonwebtoken::TokenData;
 use jsonwebtoken::{Algorithm, Header};
@@ -13,14 +17,6 @@ use std::convert::TryInto;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use actix_web::{HttpResponse, Responder, ResponseError};
-use actix_web::{web, body::BoxBody};
-use actix_web::{test, App};
-use actix_web::body::to_bytes;
-
-
-
-
 
 impl Responder for IntrospectionResponse {
     type Body = BoxBody;
@@ -29,8 +25,6 @@ impl Responder for IntrospectionResponse {
         HttpResponse::Ok().json(self) // Convert the response to a JSON response
     }
 }
-
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IntrospectionRequest {
@@ -386,229 +380,214 @@ impl TokenStore for MockTokenStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, web, App, HttpResponse};
     use actix_web::body::to_bytes;
+    use actix_web::{test, web, App, HttpResponse};
     use serde_json::json;
-
-
 
     #[actix_web::test]
     async fn test_active_token() {
-        use actix_web::{test, web, App, HttpResponse};
         use actix_web::body::to_bytes;
+        use actix_web::{test, web, App, HttpResponse};
         use serde_json::json;
-    
+
         // Box and coerce the mock implementations to trait objects
         let token_generator: Arc<dyn TokenGenerator> = Arc::new(MockTokenGeneratorintro::new());
         let token_store: Arc<dyn TokenStore> = Arc::new(MockTokenStore::new());
-    
+
         let token = "valid_access_token";
-    
+
         let introspection_request = IntrospectionRequest {
             token: token.to_string(),
             token_type_hint: None,
         };
-    
+
         // Wrap the request and data appropriately
         let req = web::Json(introspection_request);
         let token_generator_data = web::Data::new(token_generator.clone());
         let token_store: Arc<Mutex<dyn TokenStore>> = Arc::new(Mutex::new(MockTokenStore::new()));
         let token_store_data = web::Data::new(token_store.clone());
-    
+
         // Pass the boxed trait objects to the function
-        let response_result = introspect_token(
-            req,
-            token_generator_data,
-            token_store_data,
-            None,
-        )
-        .await;
-    
+        let response_result =
+            introspect_token(req, token_generator_data, token_store_data, None).await;
+
         assert!(response_result.is_ok());
         let response = response_result.unwrap();
-    
+
         // Extract the IntrospectionResponse from the HttpResponse
         let body = to_bytes(response.into_body()).await.unwrap();
         let introspection_response: IntrospectionResponse = serde_json::from_slice(&body).unwrap();
-    
+
         assert_eq!(introspection_response.active, true);
         assert_eq!(introspection_response.client_id.unwrap(), "client_id_123");
         assert_eq!(introspection_response.username.unwrap(), "user_123");
         assert!(introspection_response.exp.is_some());
         assert!(introspection_response.scope.is_some());
     }
-    
+
     #[actix_web::test]
     async fn test_revoked_token() {
         let token_generator: Arc<dyn TokenGenerator> = Arc::new(MockTokenGeneratorintro::new());
         let token_store: Arc<Mutex<dyn TokenStore>> = Arc::new(Mutex::new(MockTokenStore::new()));
-    
+
         let token = "revoked_access_token";
-    
+
         // Lock the token store to mutate it
         {
             let mut token_store = token_store.lock().unwrap();
             token_store.revoke_access_token(token);
         }
-    
+
         let introspection_request = IntrospectionRequest {
             token: token.to_string(),
             token_type_hint: None,
         };
-    
+
         let req = web::Json(introspection_request);
         let token_generator_data = web::Data::new(token_generator.clone());
         let token_store_data = web::Data::new(token_store.clone());
-    
-        let response_result = introspect_token(
-            req,
-            token_generator_data,
-            token_store_data,
-            None,
-        )
-        .await;
-    
+
+        let response_result =
+            introspect_token(req, token_generator_data, token_store_data, None).await;
+
         assert!(response_result.is_ok());
         let response = response_result.unwrap();
-    
+
         let body = to_bytes(response.into_body()).await.unwrap();
         let introspection_response: IntrospectionResponse = serde_json::from_slice(&body).unwrap();
-    
+
         assert_eq!(introspection_response.active, false);
         assert!(introspection_response.client_id.is_none());
         assert!(introspection_response.username.is_none());
         assert!(introspection_response.exp.is_none());
     }
-    
+
     #[tokio::test]
     async fn test_expired_token() {
         // Create the mock token generator and store
         let mock_token_generator = MockTokenGeneratorintro::new(); // Use concrete type first
         let token_store: Arc<Mutex<dyn TokenStore>> = Arc::new(Mutex::new(MockTokenStore::new()));
-    
+
         let token = "expired_access_token";
         mock_token_generator.set_token_expired(token); // Now we can call this method on the concrete type
-    
+
         // After using set_token_expired, we can wrap the mock_token_generator in Arc<dyn TokenGenerator>
         let token_generator: Arc<dyn TokenGenerator> = Arc::new(mock_token_generator);
-    
+
         let introspection_request = IntrospectionRequest {
             token: token.to_string(),
             token_type_hint: None,
         };
-    
+
         // Wrap the request and data appropriately
         let req = web::Json(introspection_request);
         let token_generator_data = web::Data::new(token_generator.clone());
         let token_store_data = web::Data::new(token_store.clone());
-    
+
+        // Call introspect_token with the proper types
+        let response_result =
+            introspect_token(req, token_generator_data, token_store_data, None).await;
+
+        assert!(
+            response_result.is_ok(),
+            "Expected Ok response for expired token introspection"
+        );
+        let response = response_result.unwrap();
+
+        let body = to_bytes(response.into_body()).await.unwrap();
+        let introspection_response: IntrospectionResponse = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(
+            introspection_response.active, false,
+            "Expired token should be inactive"
+        );
+    }
+
+    //Client Authentication Tests
+    // These tests validate that only authorized clients can introspect tokens, and unauthorized clients are denied access.
+
+    // 4.1 Valid Client Credentials Test
+    // This test checks if the introspection succeeds when valid client credentials are provided.
+
+    #[tokio::test]
+    async fn test_valid_client_credentials() {
+        // Use Arc directly without Box
+        let token_generator: Arc<dyn TokenGenerator> = Arc::new(MockTokenGeneratorintro::new());
+        let token_store: Arc<Mutex<dyn TokenStore>> = Arc::new(Mutex::new(MockTokenStore::new()));
+
+        let token = "valid_access_token";
+        let client_credentials = Some((
+            "valid_client_id".to_string(),
+            "valid_client_secret".to_string(),
+        ));
+
+        let introspection_request = IntrospectionRequest {
+            token: token.to_string(),
+            token_type_hint: None,
+        };
+
+        // Wrap the request and data appropriately
+        let req = web::Json(introspection_request);
+        let token_generator_data = web::Data::new(token_generator.clone());
+        let token_store_data = web::Data::new(token_store.clone());
+
         // Call introspect_token with the proper types
         let response_result = introspect_token(
             req,
             token_generator_data,
             token_store_data,
-            None,
+            client_credentials,
         )
         .await;
-    
-        assert!(response_result.is_ok(), "Expected Ok response for expired token introspection");
+
+        assert!(response_result.is_ok());
         let response = response_result.unwrap();
-    
+
         let body = to_bytes(response.into_body()).await.unwrap();
         let introspection_response: IntrospectionResponse = serde_json::from_slice(&body).unwrap();
-    
-        assert_eq!(introspection_response.active, false, "Expired token should be inactive");
+
+        assert_eq!(introspection_response.active, true);
+        assert!(introspection_response.client_id.is_some());
+        assert!(introspection_response.username.is_some());
     }
-    
 
+    //Invalid Client Credentials Test
+    //This test checks if the introspection fails when invalid client credentials are provided.
+    #[actix_web::test]
+    async fn test_invalid_client_credentials() {
+        // Create token generator and store
+        let token_generator: Arc<dyn TokenGenerator> = Arc::new(MockTokenGeneratorintro::new());
+        let token_store: Arc<Mutex<dyn TokenStore>> = Arc::new(Mutex::new(MockTokenStore::new()));
 
-//Client Authentication Tests
-// These tests validate that only authorized clients can introspect tokens, and unauthorized clients are denied access.
+        let token = "valid_access_token";
+        let client_credentials = Some((
+            "invalid_client_id".to_string(),
+            "invalid_client_secret".to_string(),
+        ));
 
-// 4.1 Valid Client Credentials Test
-// This test checks if the introspection succeeds when valid client credentials are provided.
+        let introspection_request = IntrospectionRequest {
+            token: token.to_string(),
+            token_type_hint: None,
+        };
 
-#[tokio::test]
-async fn test_valid_client_credentials() {
-    // Use Arc directly without Box
-    let token_generator: Arc<dyn TokenGenerator> = Arc::new(MockTokenGeneratorintro::new());
-    let token_store: Arc<Mutex<dyn TokenStore>> = Arc::new(Mutex::new(MockTokenStore::new()));
+        let req = web::Json(introspection_request);
+        let token_generator_data = web::Data::new(token_generator.clone());
+        let token_store_data = web::Data::new(token_store.clone());
 
-    let token = "valid_access_token";
-    let client_credentials = Some((
-        "valid_client_id".to_string(),
-        "valid_client_secret".to_string(),
-    ));
+        let response_result = introspect_token(
+            req,
+            token_generator_data,
+            token_store_data,
+            client_credentials,
+        )
+        .await;
 
-    let introspection_request = IntrospectionRequest {
-        token: token.to_string(),
-        token_type_hint: None,
-    };
-
-    // Wrap the request and data appropriately
-    let req = web::Json(introspection_request);
-    let token_generator_data = web::Data::new(token_generator.clone());
-    let token_store_data = web::Data::new(token_store.clone());
-
-    // Call introspect_token with the proper types
-    let response_result = introspect_token(
-        req,
-        token_generator_data,
-        token_store_data,
-        client_credentials,
-    )
-    .await;
-
-    assert!(response_result.is_ok());
-    let response = response_result.unwrap();
-
-    let body = to_bytes(response.into_body()).await.unwrap();
-    let introspection_response: IntrospectionResponse = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(introspection_response.active, true);
-    assert!(introspection_response.client_id.is_some());
-    assert!(introspection_response.username.is_some());
-}
-
-
-//Invalid Client Credentials Test
-//This test checks if the introspection fails when invalid client credentials are provided.
-#[actix_web::test]
-async fn test_invalid_client_credentials() {
-    // Create token generator and store
-    let token_generator: Arc<dyn TokenGenerator> = Arc::new(MockTokenGeneratorintro::new());
-    let token_store: Arc<Mutex<dyn TokenStore>> = Arc::new(Mutex::new(MockTokenStore::new()));
-
-    let token = "valid_access_token";
-    let client_credentials = Some((
-        "invalid_client_id".to_string(),
-        "invalid_client_secret".to_string(),
-    ));
-
-    let introspection_request = IntrospectionRequest {
-        token: token.to_string(),
-        token_type_hint: None,
-    };
-
-    let req = web::Json(introspection_request);
-    let token_generator_data = web::Data::new(token_generator.clone());
-    let token_store_data = web::Data::new(token_store.clone());
-
-    let response_result = introspect_token(
-        req,
-        token_generator_data,
-        token_store_data,
-        client_credentials,
-    )
-    .await;
-
-    assert!(response_result.is_err());
-    if let Err(TokenError::UnauthorizedClient) = response_result {
-        // Test passes if we receive UnauthorizedClient error
-        assert!(true);
-    } else {
-        assert!(false, "Expected unauthorized client error");
+        assert!(response_result.is_err());
+        if let Err(TokenError::UnauthorizedClient) = response_result {
+            // Test passes if we receive UnauthorizedClient error
+            assert!(true);
+        } else {
+            assert!(false, "Expected unauthorized client error");
+        }
     }
-}
-
 }

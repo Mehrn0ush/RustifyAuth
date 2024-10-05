@@ -297,10 +297,6 @@ fn generate_new_token() -> String {
     "new_refresh_token_placeholder".to_string()
 }
 
-
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;

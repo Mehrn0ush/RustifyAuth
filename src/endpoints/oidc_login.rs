@@ -3,7 +3,6 @@ use actix_web::{web, HttpResponse, Responder};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Deserialize, Debug)]
 pub struct GoogleAuthCodeRequest {
     code: String,

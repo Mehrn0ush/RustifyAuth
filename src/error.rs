@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Debug)]
 pub enum TokenError {
     InvalidToken,
@@ -23,9 +22,6 @@ pub enum OAuthError {
     SessionNotFound,
     InvalidToken,
 }
-
-
-
 
 /// Struct representing an OAuth2 error response.
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,8 +48,6 @@ impl OAuthErrorResponse {
         }
     }
 }
-
-
 
 impl From<OAuthError> for OAuthErrorResponse {
     fn from(err: OAuthError) -> Self {
@@ -98,21 +92,17 @@ impl From<OAuthError> for OAuthErrorResponse {
                 Some("Too many requests have been made in a given amount of time."),
                 None,
             ),
-            OAuthError::InternalError(desc) => OAuthErrorResponse::new(
-                "server_error",
-                Some(&desc),
-                None,
-            ),
+            OAuthError::InternalError(desc) => {
+                OAuthErrorResponse::new("server_error", Some(&desc), None)
+            }
             OAuthError::InvalidCredentials => OAuthErrorResponse::new(
                 "invalid_credentials",
                 Some("The provided credentials are invalid."),
                 None,
             ),
-            OAuthError::SessionNotFound => OAuthErrorResponse::new(
-                "session_not_found",
-                Some("No active session found."),
-                None,
-            ),
+            OAuthError::SessionNotFound => {
+                OAuthErrorResponse::new("session_not_found", Some("No active session found."), None)
+            }
             OAuthError::InvalidToken => OAuthErrorResponse::new(
                 "invalid_token",
                 Some("The token provided is invalid."),

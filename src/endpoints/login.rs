@@ -30,12 +30,12 @@ pub async fn login<A: UserAuthenticator, S: SessionManager>(
                 .header("Location", "/") // Redirect to home or original URL
                 .finish())
         }
-        Err(AuthError::InvalidCredentials) => Ok(HttpResponse::Unauthorized().body("Invalid credentials")),
+        Err(AuthError::InvalidCredentials) => {
+            Ok(HttpResponse::Unauthorized().body("Invalid credentials"))
+        }
         Err(_) => Ok(HttpResponse::InternalServerError().body("Internal server error")),
     }
 }
-
-
 
 /*
 

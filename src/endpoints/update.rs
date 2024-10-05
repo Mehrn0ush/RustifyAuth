@@ -7,10 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-
-
 // Structs for Update requests and responses
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientUpdateRequest {
@@ -99,8 +96,6 @@ pub async fn update_client_handler<T: TokenStore>(
     }
 }
 
-
-
 // RBAC check mock function for testing
 pub fn rbac_check(token: &str, required_role: &str) -> Result<(), &'static str> {
     // Mock implementation, replace with actual RBAC logic
@@ -116,42 +111,40 @@ pub fn rbac_check(token: &str, required_role: &str) -> Result<(), &'static str> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, App};
-    use std::sync::RwLock;
     use crate::core::token::InMemoryTokenStore;
     use crate::endpoints::register;
     use crate::endpoints::register::register_client_handler;
     use crate::endpoints::register::ClientMetadata;
     use crate::endpoints::register::ClientRegistrationResponse;
+    use actix_web::{test, App};
+    use std::sync::RwLock;
 
+    #[actix_web::test]
+    async fn test_update_client_not_found() {
+        let store = web::Data::new(RwLock::new(ClientStore::new(InMemoryTokenStore::new())));
 
-#[actix_web::test]
-async fn test_update_client_not_found() {
-    let store = web::Data::new(RwLock::new(ClientStore::new(InMemoryTokenStore::new())));
+        let update_metadata = ClientUpdateRequest {
+            client_name: Some("Non-Existent Client".to_string()),
+            redirect_uris: None,
+            grant_types: None,
+            response_types: None,
+            software_statement: None,
+        };
 
-    let update_metadata = ClientUpdateRequest {
-        client_name: Some("Non-Existent Client".to_string()),
-        redirect_uris: None,
-        grant_types: None,
-        response_types: None,
-        software_statement: None,
-    };
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/update/{client_id}",
+            web::put().to(update_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
 
-    let app = test::init_service(App::new()
-        .app_data(store.clone())
-        .route("/update/{client_id}", web::put().to(update_client_handler::<InMemoryTokenStore>))
-    ).await;
+        let update_req = test::TestRequest::put()
+            .uri("/update/non_existent_client_id")
+            .insert_header(("Authorization", "Bearer valid_admin_token"))
+            .set_json(&update_metadata)
+            .to_request();
 
-    let update_req = test::TestRequest::put()
-        .uri("/update/non_existent_client_id")
-        .insert_header(("Authorization", "Bearer valid_admin_token"))
-        .set_json(&update_metadata)
-        .to_request();
+        let resp = test::call_service(&app, update_req).await;
 
-    let resp = test::call_service(&app, update_req).await;
-
-    assert_eq!(resp.status(), 404);
-}
-
-
+        assert_eq!(resp.status(), 404);
+    }
 }

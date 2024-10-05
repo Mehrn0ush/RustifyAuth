@@ -1,37 +1,34 @@
+use crate::auth::mock::{MockSessionManager, MockUserAuthenticator};
+use crate::config::OAuthConfig;
 use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::authorization::MockTokenGenerator;
+use crate::core::token::{InMemoryTokenStore, RedisTokenStore};
+use crate::endpoints::register::ClientStore;
+use crate::routes::init_routes;
 use crate::storage::memory::MemoryCodeStore;
+use actix_web::{web, App, HttpServer};
 use security::tls::configure_tls;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use crate::config::OAuthConfig;
-use actix_web::{web, App, HttpServer};
-use crate::routes::init_routes;
-use crate::core::token::{InMemoryTokenStore, RedisTokenStore}; 
-use crate::endpoints::register::ClientStore;
-use crate::auth::mock::{MockUserAuthenticator, MockSessionManager};
-
 
 use std::sync::RwLock;
 
-
-pub mod core;
+pub mod auth;
+pub mod auth_middleware;
 pub mod authentication;
+pub mod config;
+pub mod core;
 pub mod endpoints;
 pub mod error;
 pub mod jwt;
 pub mod routes;
 pub mod security;
 pub mod storage;
-pub mod config;
-pub mod auth_middleware;
-pub mod auth;
 pub mod oidc {
-    pub mod jwks;  
     pub mod claims;
     pub mod discovery;
+    pub mod jwks;
 }
-
 
 // Public function to expose TLS setup as part of the library's API
 pub fn setup_tls() -> rustls::ClientConfig {
@@ -58,8 +55,6 @@ pub fn create_auth_code_flow() -> Arc<Mutex<AuthorizationCodeFlow>> {
     Arc::new(Mutex::new(auth_code_flow))
 }
 
-
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Load configuration
@@ -79,7 +74,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(client_store.clone())
             .app_data(web::Data::new(authenticator.clone()))
             .app_data(web::Data::new(session_manager.clone()))
-            .configure(init_routes::<auth::mock::MockUserAuthenticator, auth::mock::MockSessionManager>) // Initialize all routes
+            .configure(
+                init_routes::<auth::mock::MockUserAuthenticator, auth::mock::MockSessionManager>,
+            ) // Initialize all routes
     })
     .bind(("127.0.0.1", 8080))?
     .run()

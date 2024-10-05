@@ -3,10 +3,10 @@ use crate::error::OAuthError;
 use crate::jwt::generate_jwt;
 use crate::jwt::SigningAlgorithm;
 use crate::storage::{ClientData, StorageBackend};
-use serde::{Deserialize, Serialize};
 use rustls_pemfile::private_key;
-use std::time::{Duration, SystemTime};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 /// Validates client credentials by checking against storage (e.g., Redis, SQL).
 ///

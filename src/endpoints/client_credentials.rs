@@ -1,12 +1,10 @@
-use crate::error::{OAuthError, OAuthErrorResponse };
 use crate::core::client_credentials::{issue_token, validate_client_credentials, TokenResponse};
 use crate::core::types::TokenRequest;
+use crate::error::{OAuthError, OAuthErrorResponse};
 use crate::storage::{ClientData, StorageBackend};
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
 use std::sync::Arc;
-
-
 
 #[derive(Deserialize)]
 pub struct ClientCredentialsRequest {
@@ -15,7 +13,6 @@ pub struct ClientCredentialsRequest {
     pub client_secret: String,
     pub scope: Option<String>,
 }
-
 
 /// Handles the client credentials grant type for OAuth2.
 ///
@@ -34,7 +31,10 @@ pub async fn handle_client_credentials(
     storage: web::Data<Arc<dyn StorageBackend>>, // Inject storage backend
 ) -> HttpResponse {
     // Log the incoming request (avoid logging sensitive information in production)
-    log::info!("Handling client credentials for client_id: {}", req.client_id);
+    log::info!(
+        "Handling client credentials for client_id: {}",
+        req.client_id
+    );
 
     // Validate the request parameters
     if req.grant_type != "client_credentials" {
@@ -57,7 +57,11 @@ pub async fn handle_client_credentials(
         .collect();
 
     // Call core functions to validate client and issue token
-    match validate_client_credentials(&req.client_id, &req.client_secret, storage.as_ref().as_ref()) {
+    match validate_client_credentials(
+        &req.client_id,
+        &req.client_secret,
+        storage.as_ref().as_ref(),
+    ) {
         Ok(client) => match issue_token(&client, &scopes) {
             Ok(token_response) => {
                 log::info!("Issued token for client_id: {}", req.client_id);

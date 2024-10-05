@@ -9,12 +9,10 @@ use rsa::pkcs1::LineEnding;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-
 #[derive(Debug, Deserialize)]
 pub struct Jwks {
     pub keys: Vec<Jwk>,
 }
-
 
 #[derive(Deserialize, Debug)]
 pub struct Jwk {

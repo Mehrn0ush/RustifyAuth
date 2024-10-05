@@ -3,7 +3,6 @@ use async_trait::async_trait;
 pub mod mock;
 pub mod rbac;
 
-
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: String,
@@ -29,4 +28,3 @@ pub trait SessionManager: Send + Sync {
 pub trait UserAuthenticator: Send + Sync {
     async fn authenticate(&self, username: &str, password: &str) -> Result<User, AuthError>;
 }
-

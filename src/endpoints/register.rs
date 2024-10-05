@@ -4,11 +4,11 @@ use crate::security::access_control::RBAC;
 use actix_web::HttpRequest;
 use actix_web::{web, HttpResponse, Responder};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
+use rsa::pkcs1::LineEnding;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
-use rsa::pkcs1::LineEnding;
 
 // Structs for handling client metadata and registration responses
 
@@ -26,8 +26,6 @@ pub struct ClientRegistrationResponse {
     pub client_id: String,
     pub client_secret: String,
 }
-
-
 
 // The Client struct to store registered client data
 #[derive(Debug, Clone)]
@@ -103,7 +101,6 @@ pub async fn register_client_handler<T: TokenStore>(
         client_secret,
     })
 }
-
 
 // Helper function to generate client ID
 fn generate_client_id() -> String {

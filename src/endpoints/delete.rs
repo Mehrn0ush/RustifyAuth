@@ -1,13 +1,11 @@
-
-
+use crate::auth::rbac::rbac_check; // Adjust the path based on your project structure
 use crate::core::token::TokenStore;
 use crate::endpoints::register::Client;
-use crate::auth::rbac::rbac_check; // Adjust the path based on your project structure
-use actix_web::{web, HttpResponse, Responder, HttpRequest};
+use crate::endpoints::update::ClientStore;
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use serde::{Deserialize, Serialize};
-use std::sync::RwLock;
-use crate::endpoints::update::ClientStore; // Ensure the correct import path
+use std::sync::RwLock; // Ensure the correct import path
 
 /// Response structure for successful client deletion.
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,11 +56,11 @@ pub async fn delete_client_handler<T: TokenStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, App};
     use crate::core::token::InMemoryTokenStore;
-    use std::sync::RwLock;
-    use crate::endpoints::register::{ClientStore, Client};
+    use crate::endpoints::register::{Client, ClientStore};
+    use actix_web::{test, App};
     use serde_json::json;
+    use std::sync::RwLock;
 
     /// Helper function to create a sample client for testing.
     fn create_sample_client(client_id: &str) -> Client {
@@ -76,5 +74,4 @@ mod tests {
             tbid: None,
         }
     }
-
 }
