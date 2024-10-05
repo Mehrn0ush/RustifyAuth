@@ -205,4 +205,34 @@ mod tests {
             result
         );
     }
+
+    #[test]
+    fn test_rbac_check_success() {
+        dotenv::dotenv().ok(); // Ensure .env is loaded
+
+        // Retrieve the JWT_SECRET from the environment
+        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
+
+        println!("JWT Secret being used: {}", jwt_secret);
+
+        // Create claims with "admin" and "user" roles and a valid future expiration time
+        let claims = TestClaims {
+            sub: "user123".to_string(),
+            exp: 9999999999, // Future expiration time
+            roles: vec!["admin".to_string(), "user".to_string()],
+        };
+
+        // Generate the test JWT token using the same secret
+        let token = generate_test_token(claims, &jwt_secret);
+
+        println!("Generated Token: {}", token);
+
+        // Perform the RBAC check for the "admin" role
+        let result = rbac_check(&token, "admin");
+
+        println!("RBAC Check Result: {:?}", result);
+
+        // Ensure the result is Ok, meaning the role was validated successfully
+        assert!(result.is_ok(), "Expected Ok, but got: {:?}", result);
+    }
 }
