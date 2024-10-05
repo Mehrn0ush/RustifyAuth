@@ -51,12 +51,12 @@ impl ResponseError for TokenError {
 pub async fn token_endpoint(
     req: HttpRequest,
     form: web::Form<TokenRequest>,
-    token_generator: Arc<dyn TokenGenerator>,
-    token_store: Arc<dyn TokenStore>,
-    rate_limiter: Arc<RateLimiter>, // Rate limiter to protect from abuse
-    auth_code_flow: Option<Arc<Mutex<AuthorizationCodeFlow>>>, // Optional for authorization code flow
-    device_flow_handler: Option<Arc<dyn DeviceFlowHandler>>,   // Optional for device flow
-    extension_grant_handler: Option<Arc<dyn ExtensionGrantHandler>>, // Optional for extension grant handler
+    token_generator: web::Data<Arc<dyn TokenGenerator>>,
+    token_store: web::Data<Arc<dyn TokenStore>>,
+    rate_limiter: web::Data<Arc<RateLimiter>>, // Rate limiter to protect from abuse
+    auth_code_flow: Option<web::Data<Mutex<AuthorizationCodeFlow>>>, // Optional for authorization code flow
+    device_flow_handler: Option<web::Data<dyn DeviceFlowHandler>>,   // Optional for device flow
+    extension_grant_handler: Option<web::Data<dyn ExtensionGrantHandler>>, // Optional for extension grant handler
 ) -> Result<HttpResponse, TokenError> {
     let tbid = extract_tbid(&req)?;
 
@@ -69,7 +69,7 @@ pub async fn token_endpoint(
         // Handle Authorization Code Flow
         "authorization_code" => {
             if let Some(auth_flow) = auth_code_flow {
-                handle_authorization_code_flow(&form, auth_flow).await
+                handle_authorization_code_flow(&form, auth_flow.into_inner()).await
             } else {
                 Err(TokenError::UnsupportedGrantType)
             }
@@ -116,7 +116,7 @@ pub async fn token_endpoint(
 
         "urn:ietf:params:oauth:grant-type:device_code" => {
             if let Some(device_handler) = device_flow_handler {
-                handle_device_code_flow(&form, device_handler).await
+                handle_device_code_flow(&form, device_handler.into_inner()).await
             } else {
                 Err(TokenError::UnsupportedGrantType)
             }
@@ -124,7 +124,7 @@ pub async fn token_endpoint(
 
         "urn:ietf:params:oauth:grant-type:custom-grant" => {
             if let Some(extension_handler) = extension_grant_handler {
-                handle_extension_grant_flow(&form, extension_handler).await
+                handle_extension_grant_flow(&form, extension_handler.into_inner()).await
             } else {
                 Err(TokenError::UnsupportedGrantType)
             }

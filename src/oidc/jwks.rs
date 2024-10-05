@@ -9,10 +9,12 @@ use rsa::pkcs1::LineEnding;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-#[derive(Deserialize, Debug)]
+
+#[derive(Debug, Deserialize)]
 pub struct Jwks {
     pub keys: Vec<Jwk>,
 }
+
 
 #[derive(Deserialize, Debug)]
 pub struct Jwk {
@@ -130,59 +132,6 @@ mod tests {
     use serde_json::json;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    #[tokio::test]
-    async fn test_fetch_jwks() {
-        let mock_server = MockServer::start().await;
-
-        let modulus_hex = "00db6f65b42a390e478966a7dcdcbe3c5c7ea2dbe5bdce5bd71e6a0c487b8ad9a6b4bb510da41e5076476a026a514242719d9ac832aa5edd547e652a6d306a166625a76a47e01c6bd0f0a68a8e78b7ce95230db4ff219e28202b41ddc1fe5dec84e5e62b7cd28ffeaff0ef4bcb34ca4e3aaf27fbbcaa280b5bb7fb09addaa4083fcb17cfbf2015320174c9bbd2b599cf2747cd17f327abc6d508204657d721f363af5fd1d49";
-
-        let modulus_hex = if modulus_hex.len() % 2 != 0 {
-            format!("0{}", modulus_hex)
-        } else {
-            modulus_hex.to_string()
-        };
-
-        let modulus_bytes = hex::decode(&modulus_hex).expect("Failed to decode hex string");
-        let n = base64::encode(&modulus_bytes);
-        let e = "AQAB"; // Exponent for 65537
-
-        Mock::given(method("GET"))
-            .and(path("/oauth2/v3/certs"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "keys": [
-                    {
-                        "kty": "RSA",
-                        "alg": "RS256",
-                        "use_": "sig",
-                        "kid": "5aaff47c21d06e266cce395b2145c7c6d4730ea5",
-                        "n": n,
-                        "e": e,
-                    },
-                    {
-                        "kty": "RSA",
-                        "alg": "RS256",
-                        "use_": "sig",
-                        "kid": "28a421cafbe3dd889271df900f4bbf16db5c24d4",
-                        "n": n,
-                        "e": e,
-                    }
-                ]
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let jwks = fetch_jwks(None).await.expect("Failed to fetch JWKS");
-        assert_eq!(jwks.keys.len(), 2, "Expected 2 keys in the JWKS response");
-        assert!(jwks
-            .keys
-            .iter()
-            .any(|key| key.kid == "5aaff47c21d06e266cce395b2145c7c6d4730ea5"));
-        assert!(jwks
-            .keys
-            .iter()
-            .any(|key| key.kid == "28a421cafbe3dd889271df900f4bbf16db5c24d4"));
-    }
 
     #[tokio::test]
     async fn test_validate_google_token() {

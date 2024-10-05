@@ -7,6 +7,8 @@ use actix_web_httpauth::extractors::bearer::BearerAuth;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use uuid::Uuid;
+use rsa::pkcs1::LineEnding;
 
 // Structs for handling client metadata and registration responses
 
@@ -24,6 +26,8 @@ pub struct ClientRegistrationResponse {
     pub client_id: String,
     pub client_secret: String,
 }
+
+
 
 // The Client struct to store registered client data
 #[derive(Debug, Clone)]
@@ -100,14 +104,15 @@ pub async fn register_client_handler<T: TokenStore>(
     })
 }
 
+
 // Helper function to generate client ID
 fn generate_client_id() -> String {
-    format!("client_{}", uuid::Uuid::new_v4())
+    format!("client_{}", Uuid::new_v4())
 }
 
 // Helper function to generate client secret
 fn generate_client_secret() -> String {
-    format!("secret_{}", uuid::Uuid::new_v4())
+    format!("secret_{}", Uuid::new_v4())
 }
 
 // Helper function to extract TBID (Token Binding ID)

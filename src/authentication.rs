@@ -39,6 +39,7 @@ pub enum AuthError {
     InvalidCredentials,
     SessionNotFound,
     InternalError,
+    OAuthErrorResponse
     // Add other error variants as needed
 }
 
