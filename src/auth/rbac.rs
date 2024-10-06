@@ -107,11 +107,12 @@ mod tests {
     #[derive(Debug, Serialize)]
     struct TestClaims {
         sub: String,
-        exp: i64, // Changed to i64
+        exp: i64,
         roles: Vec<String>,
     }
 
     /// Helper function to generate a JWT token for testing.
+
     fn generate_test_token(claims: TestClaims, secret: &str) -> String {
         let header = Header::new(Algorithm::HS256);
         encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref())).unwrap()
