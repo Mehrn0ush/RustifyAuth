@@ -4,6 +4,8 @@ use crate::jwt::generate_jwt;
 use crate::jwt::SigningAlgorithm;
 use crate::storage::{ClientData, StorageBackend};
 use rustls_pemfile::private_key;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 /// Validates client credentials by checking against storage (e.g., Redis, SQL).
@@ -37,10 +39,13 @@ pub fn validate_client_credentials(
 }
 
 /// Structure for the token response as per OAuth 2.0.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,
     pub token_type: String,
     pub expires_in: u64,
+    pub refresh_token: Option<String>,
+    pub scope: Option<String>,
 }
 
 /// Issues a token based on the validated client and requested scopes.
@@ -51,7 +56,7 @@ pub struct TokenResponse {
 /// Returns `TokenResponse` with the generated token or an error.
 pub fn issue_token(
     client: &ClientData,
-    scopes: &[&str], // Requested scopes by client
+    scopes: &[String], // Requested scopes by client
 ) -> Result<TokenResponse, OAuthError> {
     // Check if requested scopes are allowed for this client
     for scope in scopes {
@@ -93,6 +98,8 @@ pub fn issue_token(
         access_token: token,
         token_type: "Bearer".to_string(),
         expires_in: expiry_duration.as_secs(),
+        refresh_token: None,
+        scope: None,
     })
 }
 

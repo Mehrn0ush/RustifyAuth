@@ -2,6 +2,7 @@ pub mod authorization;
 pub mod client_credentials;
 pub mod device_flow;
 pub mod extension_grants;
+pub mod oidc_providers;
 pub mod pkce;
 pub mod refresh;
 pub mod scopes;

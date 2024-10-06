@@ -1,4 +1,4 @@
-
+// src/auth/mock.rs
 use super::{AuthError, SessionManager, User, UserAuthenticator};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -33,9 +33,7 @@ impl UserAuthenticator for MockUserAuthenticator {
         }
     }
 
-    async fn is_authenticated(&self, _session_id: &str) -> Result<User, AuthError> {
-        Err(AuthError::SessionNotFound)
-    }
+    // Removed `is_authenticated` method as it's not part of the trait
 }
 
 pub struct MockSessionManager {
@@ -52,23 +50,26 @@ impl MockSessionManager {
 
 #[async_trait]
 impl SessionManager for MockSessionManager {
-    async fn create_session(&self, user: &User) -> Result<String, AuthError> {
+    async fn create_session(&self, user_id: &str) -> Result<String, ()> {
         let session_id = Uuid::new_v4().to_string();
-        self.sessions
-            .lock()
-            .unwrap()
-            .insert(session_id.clone(), user.clone());
+        self.sessions.lock().unwrap().insert(
+            session_id.clone(),
+            User {
+                id: Uuid::new_v4().to_string(),
+                username: user_id.to_string(),
+            },
+        );
         Ok(session_id)
     }
 
-    async fn get_user_by_session(&self, session_id: &str) -> Result<User, AuthError> {
+    async fn get_user_by_session(&self, session_id: &str) -> Result<User, ()> {
         match self.sessions.lock().unwrap().get(session_id) {
             Some(user) => Ok(user.clone()),
-            None => Err(AuthError::SessionNotFound),
+            None => Err(()),
         }
     }
 
-    async fn destroy_session(&self, session_id: &str) -> Result<(), AuthError> {
+    async fn destroy_session(&self, session_id: &str) -> Result<(), ()> {
         self.sessions.lock().unwrap().remove(session_id);
         Ok(())
     }
@@ -77,8 +78,7 @@ impl SessionManager for MockSessionManager {
 /*
 Notes:
 
-The MockUserAuthenticator provides a simple in-memory user authentication mechanism.
-The MockSessionManager manages user sessions in memory.
-These implementations are useful for testing or as examples.
-
+- The `MockUserAuthenticator` provides an in-memory user authentication mechanism.
+- The `MockSessionManager` manages user sessions in memory.
+- These implementations are useful for testing or as examples.
 */

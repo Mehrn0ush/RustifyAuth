@@ -279,6 +279,7 @@ impl StorageBackend for MemoryStorage {
         }
     }
 }
+
 // helper function to get the current time
 fn get_current_time() -> Result<u64, TokenError> {
     SystemTime::now()

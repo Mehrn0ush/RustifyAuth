@@ -14,10 +14,10 @@ pub struct AuthorizationRequest {
     code_challenge_method: Option<String>,
 }
 
-pub async fn authorize<A: UserAuthenticator, S: SessionManager>(
+pub async fn authorize(
     query: web::Query<AuthorizationRequest>,
-    authenticator: web::Data<Arc<A>>,
-    session_manager: web::Data<Arc<S>>,
+    authenticator: web::Data<Arc<dyn UserAuthenticator>>,
+    session_manager: web::Data<Arc<dyn SessionManager>>,
     req: actix_web::HttpRequest,
 ) -> Result<HttpResponse> {
     // Step 1: Validate the client information
