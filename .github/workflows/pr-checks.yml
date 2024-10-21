@@ -25,6 +25,7 @@ jobs:
     - name: Run cargo test
       env: 
         REDIS_URL: redis://localhost:6379
+        JWT_SECRET: test_secret
       run: cargo test
 
   format:

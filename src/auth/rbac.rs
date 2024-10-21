@@ -101,56 +101,84 @@ pub fn extract_roles(token: &str) -> RbacResult<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::mock::{MockSessionManager, MockUserAuthenticator};
+    use jsonwebtoken::{decode, Algorithm, DecodingKey, TokenData, Validation};
     use jsonwebtoken::{encode, EncodingKey, Header};
+    use serde::{Deserialize, Serialize};
+    use serial_test::serial;
+    use std::collections::HashSet;
     use std::env;
 
     #[derive(Debug, Serialize)]
     struct TestClaims {
         sub: String,
-        exp: i64, // Changed to i64
+        exp: i64,
         roles: Vec<String>,
     }
 
     /// Helper function to generate a JWT token for testing.
+
     fn generate_test_token(claims: TestClaims, secret: &str) -> String {
         let header = Header::new(Algorithm::HS256);
         encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref())).unwrap()
     }
 
+    /// Helper function to set the JWT_SECRET environment variable.
+    fn set_jwt_secret(secret: &str) {
+        env::set_var("JWT_SECRET", secret);
+    }
+
+    /// Helper function to remove the JWT_SECRET environment variable.
+    fn remove_jwt_secret() {
+        env::remove_var("JWT_SECRET");
+    }
+
+    /// Test that `rbac_check` fails with an invalid token.
     #[test]
+    #[serial]
     fn test_rbac_check_invalid_token() {
         // Set the JWT_SECRET environment variable for testing
-        env::set_var("JWT_SECRET", "test_secret");
+        set_jwt_secret("test_secret");
 
         let invalid_token = "invalid.token.value";
 
         let result = rbac_check(invalid_token, "admin");
-        assert!(matches!(result, Err(RbacError::InvalidToken)));
+        assert!(
+            matches!(result, Err(RbacError::InvalidToken)),
+            "Expected InvalidToken error, but got: {:?}",
+            result
+        );
 
         // Clean up
-        env::remove_var("JWT_SECRET");
+        remove_jwt_secret();
     }
 
+    /// Test that `extract_roles` fails with an invalid token.
     #[test]
+    #[serial]
     fn test_extract_roles_invalid_token() {
         // Set the JWT_SECRET environment variable for testing
-        env::set_var("JWT_SECRET", "test_secret");
+        set_jwt_secret("test_secret");
 
         let invalid_token = "invalid.token.value";
 
         let result = extract_roles(invalid_token);
-        assert!(matches!(result, Err(RbacError::InvalidToken)));
+        assert!(
+            matches!(result, Err(RbacError::InvalidToken)),
+            "Expected InvalidToken error, but got: {:?}",
+            result
+        );
 
         // Clean up
-        env::remove_var("JWT_SECRET");
+        remove_jwt_secret();
     }
 
+    /// Test that `rbac_check` correctly identifies an expired token.
     #[test]
+    #[serial]
     fn test_rbac_check_expired_token() {
-        dotenv::dotenv().ok();
-
-        // Ensure JWT_SECRET is set in the environment
-        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
+        // Set the JWT_SECRET environment variable for testing
+        set_jwt_secret("test_secret");
 
         // Set the expiration time to a timestamp in the past
         let past_timestamp = (chrono::Utc::now() - chrono::Duration::seconds(3600)).timestamp();
@@ -163,7 +191,7 @@ mod tests {
         };
 
         // Generate a test token using the JWT_SECRET
-        let token = generate_test_token(claims, &jwt_secret);
+        let token = generate_test_token(claims, "test_secret");
 
         // Perform the RBAC check
         let result = rbac_check(&token, "admin");
@@ -174,13 +202,17 @@ mod tests {
             "Expected ExpiredToken, but got: {:?}",
             result
         );
-    }
-    #[test]
-    fn test_rbac_check_missing_role() {
-        dotenv::dotenv().ok(); // Load environment variables from .env
 
-        // Ensure JWT_SECRET is set in the environment
-        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
+        // Clean up
+        remove_jwt_secret();
+    }
+
+    /// Test that `rbac_check` fails when the required role is missing.
+    #[test]
+    #[serial]
+    fn test_rbac_check_missing_role() {
+        // Set the JWT_SECRET environment variable for testing
+        set_jwt_secret("test_secret");
 
         // Define the claims with the role "user" and a valid future expiration time
         let claims = TestClaims {
@@ -190,7 +222,7 @@ mod tests {
         };
 
         // Generate the test JWT token using the JWT_SECRET
-        let token = generate_test_token(claims, &jwt_secret);
+        let token = generate_test_token(claims, "test_secret");
 
         // Run the RBAC check for the "admin" role
         let result = rbac_check(&token, "admin");
@@ -204,16 +236,17 @@ mod tests {
             "Expected InsufficientRole, but got: {:?}",
             result
         );
+
+        // Clean up
+        remove_jwt_secret();
     }
 
+    /// Test that `rbac_check` succeeds when the required role is present.
     #[test]
+    #[serial]
     fn test_rbac_check_success() {
-        dotenv::dotenv().ok(); // Load environment variables from .env
-
-        // Retrieve the JWT_SECRET from the environment
-        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
-
-        println!("JWT Secret being used: {}", jwt_secret);
+        // Set the JWT_SECRET environment variable for testing
+        set_jwt_secret("test_secret");
 
         // Create claims with "admin" and "user" roles and a valid future expiration time
         let claims = TestClaims {
@@ -223,17 +256,19 @@ mod tests {
         };
 
         // Generate the test JWT token using the same secret
-        let token = generate_test_token(claims, &jwt_secret);
-
-        println!("Generated Token: {}", token);
+        let token = generate_test_token(claims, "test_secret");
 
         // Perform the RBAC check for the "admin" role
         let result = rbac_check(&token, "admin");
 
+        // Debugging output to track the result
         println!("RBAC Check Result: {:?}", result);
 
         // Ensure the result is Ok, meaning the role was validated successfully
         assert!(result.is_ok(), "Expected Ok, but got: {:?}", result);
+
+        // Clean up
+        remove_jwt_secret();
     }
 
     #[test]
