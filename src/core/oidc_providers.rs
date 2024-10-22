@@ -18,3 +18,70 @@ pub fn google_provider_config() -> OIDCProviderConfig {
         discovery_url: "https://accounts.google.com/.well-known/openid-configuration".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn test_google_provider_config_success() {
+        // Set environment variables
+        env::set_var("GOOGLE_CLIENT_ID", "test_client_id");
+        env::set_var("GOOGLE_CLIENT_SECRET", "test_client_secret");
+        env::set_var("GOOGLE_REDIRECT_URI", "https://example.com/callback");
+
+        // Call the google_provider_config function
+        let config = google_provider_config();
+
+        // Assert that the config contains the expected values
+        assert_eq!(config.client_id, "test_client_id");
+        assert_eq!(config.client_secret, "test_client_secret");
+        assert_eq!(config.redirect_uri, "https://example.com/callback");
+        assert_eq!(
+            config.discovery_url,
+            "https://accounts.google.com/.well-known/openid-configuration"
+        );
+
+        // Clean up the environment variables after test
+        env::remove_var("GOOGLE_CLIENT_ID");
+        env::remove_var("GOOGLE_CLIENT_SECRET");
+        env::remove_var("GOOGLE_REDIRECT_URI");
+    }
+
+    #[test]
+    #[should_panic(expected = "GOOGLE_CLIENT_ID must be set")]
+    fn test_missing_google_client_id() {
+        // Unset the GOOGLE_CLIENT_ID to trigger panic
+        env::remove_var("GOOGLE_CLIENT_ID");
+        env::set_var("GOOGLE_CLIENT_SECRET", "test_client_secret");
+        env::set_var("GOOGLE_REDIRECT_URI", "https://example.com/callback");
+
+        // This should panic due to missing GOOGLE_CLIENT_ID
+        google_provider_config();
+    }
+
+    #[test]
+    #[should_panic(expected = "GOOGLE_CLIENT_SECRET must be set")]
+    fn test_missing_google_client_secret() {
+        // Unset the GOOGLE_CLIENT_SECRET to trigger panic
+        env::set_var("GOOGLE_CLIENT_ID", "test_client_id");
+        env::remove_var("GOOGLE_CLIENT_SECRET");
+        env::set_var("GOOGLE_REDIRECT_URI", "https://example.com/callback");
+
+        // This should panic due to missing GOOGLE_CLIENT_SECRET
+        google_provider_config();
+    }
+
+    #[test]
+    #[should_panic(expected = "GOOGLE_REDIRECT_URI must be set")]
+    fn test_missing_google_redirect_uri() {
+        // Unset the GOOGLE_REDIRECT_URI to trigger panic
+        env::set_var("GOOGLE_CLIENT_ID", "test_client_id");
+        env::set_var("GOOGLE_CLIENT_SECRET", "test_client_secret");
+        env::remove_var("GOOGLE_REDIRECT_URI");
+
+        // This should panic due to missing GOOGLE_REDIRECT_URI
+        google_provider_config();
+    }
+}
