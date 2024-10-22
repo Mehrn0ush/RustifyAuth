@@ -94,3 +94,75 @@ impl ExtensionGrantHandler for CustomGrant {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_generate_device_code() {
+        let handler = DefaultDeviceFlowHandler::new("https://example.com");
+        let response = handler.generate_device_code();
+
+        assert_eq!(response.device_code, "generated_device_code");
+        assert_eq!(response.verification_uri, "https://example.com/device");
+        assert!(response.expires_in > 0);
+        assert_eq!(response.interval, 5);
+    }
+
+    #[test]
+    fn test_poll_valid_device_code() {
+        let handler = DefaultDeviceFlowHandler::new("https://example.com");
+        let result = handler.poll_device_code("valid_device_code");
+
+        assert!(result.is_ok());
+        let token_response = result.unwrap();
+        assert_eq!(token_response.access_token, "device_access_token");
+        assert_eq!(token_response.token_type, "Bearer");
+        assert_eq!(token_response.expires_in, 3600);
+        assert_eq!(token_response.refresh_token, "device_refresh_token");
+        assert_eq!(token_response.scope.unwrap(), "read write");
+    }
+
+    #[test]
+    fn test_poll_invalid_device_code() {
+        let handler = DefaultDeviceFlowHandler::new("https://example.com");
+        let result = handler.poll_device_code("invalid_device_code");
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error, TokenError::InvalidGrant);
+    }
+
+    #[test]
+    fn test_handle_custom_grant() {
+        let handler = CustomGrant;
+        let mut params = HashMap::new();
+        params.insert("custom_param".to_string(), "value".to_string());
+
+        let result = handler
+            .handle_extension_grant("urn:ietf:params:oauth:grant-type:custom-grant", &params);
+        assert!(result.is_ok());
+
+        let token_response = result.unwrap();
+        assert_eq!(token_response.access_token, "custom_access_token");
+        assert_eq!(token_response.token_type, "Bearer");
+        assert_eq!(token_response.expires_in, 3600);
+        assert_eq!(token_response.refresh_token, "custom_refresh_token");
+        assert_eq!(token_response.scope.unwrap(), "custom_scope");
+    }
+
+    #[test]
+    fn test_handle_unsupported_grant() {
+        let handler = CustomGrant;
+        let mut params = HashMap::new();
+        params.insert("unsupported_param".to_string(), "value".to_string());
+
+        let result = handler.handle_extension_grant("unsupported_grant_type", &params);
+        assert!(result.is_err());
+
+        let error = result.unwrap_err();
+        assert_eq!(error, TokenError::UnsupportedGrantType);
+    }
+}
