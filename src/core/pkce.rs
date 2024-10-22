@@ -7,7 +7,7 @@ use thiserror::Error; // For better error handling
 const MIN_VERIFIER_LENGTH: usize = 43;
 const MAX_VERIFIER_LENGTH: usize = 128;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum PkceError {
     #[error("Verifier is too short or too long")]
     InvalidVerifierLength,
@@ -19,17 +19,17 @@ pub enum PkceError {
 
 // Function to validate if a PKCE verifier meets the length and character requirements
 fn validate_verifier(verifier: &str) -> Result<(), PkceError> {
-    // Check that the verifier length is within the allowed range (43-128 characters)
-    if verifier.len() < MIN_VERIFIER_LENGTH || verifier.len() > MAX_VERIFIER_LENGTH {
-        return Err(PkceError::InvalidVerifierLength);
-    }
-
     // Check that the verifier contains only valid characters (alphanumeric and "-._~")
     if !verifier
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c))
     {
         return Err(PkceError::InvalidVerifierCharacters);
+    }
+
+    // Check that the verifier length is within the allowed range (43-128 characters)
+    if verifier.len() < MIN_VERIFIER_LENGTH || verifier.len() > MAX_VERIFIER_LENGTH {
+        return Err(PkceError::InvalidVerifierLength);
     }
 
     Ok(())
@@ -60,5 +60,54 @@ pub fn validate_pkce_challenge(challenge: &str, verifier: &str) -> Result<(), Pk
         Ok(())
     } else {
         Err(PkceError::InvalidVerifier)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_pkce_verifier() {
+        let verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+        let challenge = generate_pkce_challenge(verifier);
+        assert!(challenge.is_ok());
+    }
+
+    #[test]
+    fn test_invalid_pkce_verifier_length() {
+        let short_verifier = "short";
+        let long_verifier = "a".repeat(200); // Over the max length
+
+        let short_result = generate_pkce_challenge(&short_verifier);
+        let long_result = generate_pkce_challenge(&long_verifier);
+
+        assert_eq!(short_result.unwrap_err(), PkceError::InvalidVerifierLength);
+        assert_eq!(long_result.unwrap_err(), PkceError::InvalidVerifierLength);
+    }
+
+    #[test]
+    fn test_invalid_pkce_verifier_characters() {
+        let invalid_verifier = "invalid@chars!";
+        let result = generate_pkce_challenge(invalid_verifier);
+        assert_eq!(result.unwrap_err(), PkceError::InvalidVerifierCharacters);
+    }
+
+    #[test]
+    fn test_valid_pkce_challenge_validation() {
+        let verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+        let challenge = generate_pkce_challenge(verifier).unwrap();
+
+        let result = validate_pkce_challenge(&challenge, verifier);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_invalid_pkce_challenge_validation() {
+        let verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+        let challenge = generate_pkce_challenge(verifier).unwrap();
+
+        let result = validate_pkce_challenge("incorrect_challenge", verifier);
+        assert_eq!(result.unwrap_err(), PkceError::InvalidVerifier);
     }
 }
