@@ -273,10 +273,7 @@ mod tests {
 
     #[test]
     fn test_extract_roles_success() {
-        dotenv::dotenv().ok(); // Ensure .env is loaded for consistency
-
-        // Ensure JWT_SECRET is set in the environment
-        let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env");
+        set_jwt_secret("test_secret"); // Set the secret directly for the test
 
         // Define the claims
         let claims = TestClaims {
@@ -285,8 +282,8 @@ mod tests {
             roles: vec!["admin".to_string(), "user".to_string()],
         };
 
-        // Generate the test token using the JWT_SECRET from environment
-        let token = generate_test_token(claims, &jwt_secret);
+        // Generate the test token using the same secret
+        let token = generate_test_token(claims, "test_secret");
 
         // Log the generated token for debugging
         println!("Generated token: {}", token);
@@ -308,5 +305,8 @@ mod tests {
         let roles = result.unwrap();
         assert!(roles.contains(&"admin".to_string()));
         assert!(roles.contains(&"user".to_string()));
+
+        // Clean up
+        remove_jwt_secret();
     }
 }
