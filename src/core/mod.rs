@@ -9,4 +9,3 @@ pub mod refresh;
 pub mod scopes;
 pub mod token;
 pub mod types;
-
