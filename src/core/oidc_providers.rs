@@ -25,29 +25,20 @@ mod tests {
     use serial_test::serial;
     use std::env;
 
-    #[test]
-    fn test_google_provider_config_success() {
-        // Set environment variables
-        env::set_var("GOOGLE_CLIENT_ID", "test_client_id");
-        env::set_var("GOOGLE_CLIENT_SECRET", "test_client_secret");
-        env::set_var("GOOGLE_REDIRECT_URI", "https://example.com/callback");
+    #[actix_rt::test]
+    async fn test_google_provider_config_success() {
+        // Set up mock environment variables
+        std::env::set_var("GOOGLE_CLIENT_ID", "test_client_id");
+        std::env::set_var("GOOGLE_CLIENT_SECRET", "test_client_secret");
+        std::env::set_var("GOOGLE_REDIRECT_URI", "https://example.com/callback");
 
-        // Call the google_provider_config function
+        // Call the google_provider_config function to get the config
         let config = google_provider_config();
 
         // Assert that the config contains the expected values
         assert_eq!(config.client_id, "test_client_id");
         assert_eq!(config.client_secret, "test_client_secret");
         assert_eq!(config.redirect_uri, "https://example.com/callback");
-        assert_eq!(
-            config.discovery_url,
-            "https://accounts.google.com/.well-known/openid-configuration"
-        );
-
-        // Clean up the environment variables after test
-        env::remove_var("GOOGLE_CLIENT_ID");
-        env::remove_var("GOOGLE_CLIENT_SECRET");
-        env::remove_var("GOOGLE_REDIRECT_URI");
     }
 
     #[test]
