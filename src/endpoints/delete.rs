@@ -20,6 +20,7 @@ pub struct ClientDeleteResponse {
 /// * `store` - Shared data store containing clients and their secrets.
 /// * `client_id` - Path parameter identifying the client to delete.
 /// * `credentials` - Bearer token for authentication.
+/// * `jwt_secret` - JWT secret used for decoding tokens.
 ///
 /// # Returns
 ///
@@ -28,10 +29,11 @@ pub async fn delete_client_handler<T: TokenStore>(
     store: web::Data<RwLock<ClientStore<T>>>,
     client_id: web::Path<String>,
     credentials: BearerAuth,
-    req: HttpRequest, // If TBID extraction is needed in future
+    jwt_secret: web::Data<String>, // Add jwt_secret as a parameter
+    req: HttpRequest,              // If TBID extraction is needed in future
 ) -> impl Responder {
     // Perform RBAC check to ensure the requester has the 'admin' role.
-    if let Err(_) = rbac_check(credentials.token(), "admin") {
+    if let Err(_) = rbac_check(credentials.token(), "admin", jwt_secret.as_str()) {
         return HttpResponse::Unauthorized().json("Unauthorized client");
     }
 

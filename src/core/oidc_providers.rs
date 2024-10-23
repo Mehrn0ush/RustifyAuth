@@ -22,6 +22,7 @@ pub fn google_provider_config() -> OIDCProviderConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::env;
 
     #[test]
