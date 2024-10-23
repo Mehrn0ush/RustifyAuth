@@ -58,6 +58,7 @@ impl<T: TokenStore> ClientStore<T> {
 
 // Client registration handler
 
+// Client registration handler
 pub async fn register_client_handler<T: TokenStore>(
     store: web::Data<RwLock<ClientStore<T>>>,
     metadata: web::Json<ClientMetadata>,
@@ -69,7 +70,11 @@ pub async fn register_client_handler<T: TokenStore>(
         return HttpResponse::Unauthorized().json("Unauthorized client");
     }
 
-    // Extract TBID from the request headers
+    // Validate that required fields are present
+    if metadata.redirect_uris.is_empty() {
+        return HttpResponse::BadRequest().body("Missing required field: redirect_uris");
+    }
+
     let tbid = match extract_tbid(&req) {
         Ok(tbid) => Some(tbid),
         Err(_) => None,
@@ -240,5 +245,76 @@ mod tests {
         let stored_client = store.clients.get(&resp.client_id).unwrap();
 
         assert_eq!(stored_client.tbid, Some(tbid.to_string()));
+    }
+
+    // Test for missing TBID header
+    #[actix_web::test]
+    async fn test_register_client_without_tbid() {
+        let store = web::Data::new(RwLock::new(ClientStore::new(InMemoryTokenStore::new())));
+        let metadata = ClientMetadata {
+            client_name: "Test Client".to_string(),
+            redirect_uris: vec!["http://localhost/callback".to_string()],
+            grant_types: vec!["authorization_code".to_string()],
+            response_types: vec!["code".to_string()],
+            software_statement: None,
+        };
+
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/register",
+            web::post().to(register_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/register")
+            .insert_header(("Authorization", "Bearer valid_admin_token"))
+            .set_json(&metadata)
+            .to_request();
+
+        let resp: ClientRegistrationResponse = test::call_and_read_body_json(&app, req).await;
+
+        assert!(!resp.client_id.is_empty());
+        assert!(!resp.client_secret.is_empty());
+
+        // Verify that the client is stored without a TBID
+        let store = store.read().unwrap();
+        let stored_client = store.clients.get(&resp.client_id).unwrap();
+        assert_eq!(stored_client.tbid, None);
+    }
+
+    // Test for invalid client metadata (e.g., missing required fields)
+    #[actix_web::test]
+    async fn test_register_client_invalid_metadata() {
+        let store = web::Data::new(RwLock::new(ClientStore::new(InMemoryTokenStore::new())));
+
+        // Create metadata with missing redirect_uris
+        let invalid_metadata = ClientMetadata {
+            client_name: "Test Client".to_string(),
+            redirect_uris: vec![], // Invalid: empty redirect URIs
+            grant_types: vec!["authorization_code".to_string()],
+            response_types: vec!["code".to_string()],
+            software_statement: None,
+        };
+
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/register",
+            web::post().to(register_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/register")
+            .insert_header(("Authorization", "Bearer valid_admin_token"))
+            .set_json(&invalid_metadata)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+
+        // Assert the status is BadRequest (400) due to invalid metadata
+        assert_eq!(resp.status(), 400);
+
+        // Optionally, you can check the response body for the specific error message
+        let body = test::read_body(resp).await;
+        assert_eq!(body, "Missing required field: redirect_uris");
     }
 }
