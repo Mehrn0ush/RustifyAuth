@@ -1,3 +1,4 @@
+use crate::authentication::{SessionManager, UserAuthenticator};
 use async_trait::async_trait;
 
 pub mod mock;
@@ -14,9 +15,10 @@ pub struct User {
 pub enum AuthError {
     InvalidCredentials,
     DatabaseError,
+    SessionNotFound,
     // Add other error variants as needed
 }
-
+/*
 #[async_trait]
 pub trait SessionManager: Send + Sync {
     async fn create_session(&self, user_id: &str) -> Result<String, ()>;
@@ -28,3 +30,4 @@ pub trait SessionManager: Send + Sync {
 pub trait UserAuthenticator: Send + Sync {
     async fn authenticate(&self, username: &str, password: &str) -> Result<User, AuthError>;
 }
+*/

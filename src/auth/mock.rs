@@ -1,8 +1,8 @@
-// src/auth/mock.rs
-use super::{AuthError, SessionManager, User, UserAuthenticator};
+use crate::authentication::{AuthError, SessionManager, User, UserAuthenticator};
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub struct MockUserAuthenticator {
@@ -23,7 +23,7 @@ impl MockUserAuthenticator {
 #[async_trait]
 impl UserAuthenticator for MockUserAuthenticator {
     async fn authenticate(&self, username: &str, password: &str) -> Result<User, AuthError> {
-        let users = self.users.lock().unwrap();
+        let users = self.users.lock().await;
         match users.get(username) {
             Some(stored_password) if stored_password == password => Ok(User {
                 id: Uuid::new_v4().to_string(),
@@ -33,44 +33,56 @@ impl UserAuthenticator for MockUserAuthenticator {
         }
     }
 
-    // Removed `is_authenticated` method as it's not part of the trait
+    async fn is_authenticated(&self, session_id: &str) -> Result<User, AuthError> {
+        // For the mock, we'll assume any non-empty session_id is valid
+        if !session_id.is_empty() {
+            Ok(User {
+                id: Uuid::new_v4().to_string(),
+                username: "mock_user".to_string(),
+            })
+        } else {
+            Err(AuthError::SessionNotFound)
+        }
+    }
 }
 
 pub struct MockSessionManager {
-    sessions: Arc<Mutex<HashMap<String, User>>>, // session_id -> User
+    sessions: Mutex<HashMap<String, User>>,
 }
 
 impl MockSessionManager {
     pub fn new() -> Self {
-        Self {
-            sessions: Arc::new(Mutex::new(HashMap::new())),
+        MockSessionManager {
+            sessions: Mutex::new(HashMap::new()),
         }
+    }
+
+    pub async fn add_session(&self, session_id: &str, user: User) {
+        let mut sessions = self.sessions.lock().await;
+        sessions.insert(session_id.to_string(), user);
     }
 }
 
 #[async_trait]
 impl SessionManager for MockSessionManager {
-    async fn create_session(&self, user_id: &str) -> Result<String, ()> {
+    async fn create_session(&self, user: &User) -> Result<String, AuthError> {
         let session_id = Uuid::new_v4().to_string();
-        self.sessions.lock().unwrap().insert(
-            session_id.clone(),
-            User {
-                id: Uuid::new_v4().to_string(),
-                username: user_id.to_string(),
-            },
-        );
+        let mut sessions = self.sessions.lock().await;
+        sessions.insert(session_id.clone(), user.clone());
         Ok(session_id)
     }
 
-    async fn get_user_by_session(&self, session_id: &str) -> Result<User, ()> {
-        match self.sessions.lock().unwrap().get(session_id) {
+    async fn get_user_by_session(&self, session_id: &str) -> Result<User, AuthError> {
+        let sessions = self.sessions.lock().await;
+        match sessions.get(session_id) {
             Some(user) => Ok(user.clone()),
-            None => Err(()),
+            None => Err(AuthError::SessionNotFound),
         }
     }
 
-    async fn destroy_session(&self, session_id: &str) -> Result<(), ()> {
-        self.sessions.lock().unwrap().remove(session_id);
+    async fn destroy_session(&self, session_id: &str) -> Result<(), AuthError> {
+        let mut sessions = self.sessions.lock().await;
+        sessions.remove(session_id);
         Ok(())
     }
 }

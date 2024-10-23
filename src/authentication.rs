@@ -5,23 +5,16 @@ use std::sync::Arc;
 /// Trait for user authentication
 #[async_trait]
 pub trait UserAuthenticator: Send + Sync {
-    /// Authenticate the user with given credentials
     async fn authenticate(&self, username: &str, password: &str) -> Result<User, AuthError>;
-
-    /// Check if the user is authenticated (e.g., via a session token)
     async fn is_authenticated(&self, session_id: &str) -> Result<User, AuthError>;
 }
 
 /// Trait for session management
+
 #[async_trait]
 pub trait SessionManager: Send + Sync {
-    /// Create a new session for a user
     async fn create_session(&self, user: &User) -> Result<String, AuthError>;
-
-    /// Retrieve a user by session ID
     async fn get_user_by_session(&self, session_id: &str) -> Result<User, AuthError>;
-
-    /// Destroy a session
     async fn destroy_session(&self, session_id: &str) -> Result<(), AuthError>;
 }
 
@@ -30,7 +23,6 @@ pub trait SessionManager: Send + Sync {
 pub struct User {
     pub id: String,
     pub username: String,
-    // Additional fields as needed
 }
 
 /// Error type for authentication-related errors
@@ -39,7 +31,7 @@ pub enum AuthError {
     InvalidCredentials,
     SessionNotFound,
     InternalError,
-    OAuthErrorResponse, // Add other error variants as needed
+    OAuthErrorResponse,
 }
 
 /*

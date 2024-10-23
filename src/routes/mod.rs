@@ -1,7 +1,7 @@
 pub mod auth;
 pub mod device_flow;
 pub mod users;
-use crate::auth::{SessionManager, UserAuthenticator};
+use crate::authentication::{SessionManager, UserAuthenticator};
 use crate::endpoints::authorize::authorize;
 use crate::endpoints::delete::delete_client_handler;
 use crate::endpoints::introspection::introspect_token;
