@@ -4,11 +4,12 @@ pub mod sql;
 use crate::error::OAuthError;
 pub mod backend;
 pub mod client;
+pub mod mock;
 
 pub use memory::{CodeStore, TokenStore};
 
 /// `ClientData` stores client information, such as ID, secret, and allowed scopes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ClientData {
     pub client_id: String,
     pub secret: String,
