@@ -318,7 +318,7 @@ impl InMemoryTokenStore {
         client_id: &str,
         user_id: &str,
         exp: u64,
-        _tbid: Option<String>,
+        tbid: Option<String>,
     ) -> Result<(), TokenError> {
         let mut refresh_tokens = self.refresh_tokens.lock().unwrap();
         refresh_tokens.insert(
@@ -331,6 +331,27 @@ impl InMemoryTokenStore {
             },
         );
         Ok(())
+    }
+
+    pub fn store_access_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        expiration: u64,
+    ) -> Result<(), TokenError> {
+        let mut active_tokens = self.active_tokens.lock().unwrap();
+        active_tokens.insert(
+            token.to_string(),
+            Token {
+                value: token.to_string(),
+                expiration,
+                client_id: client_id.to_string(),
+                user_id: user_id.to_string(),
+                tbid: None, // You can modify this if tbid is available
+            },
+        );
+        Ok(()) // Fix: Return the appropriate Result type
     }
 
     fn validate_refresh_token(
