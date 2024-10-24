@@ -1,6 +1,7 @@
 use crate::core::token::{InMemoryTokenStore, TokenStore};
 use actix_web::rt::time::interval;
 use actix_web::{web, HttpResponse};
+use log::{error, info}; // Added logging
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -89,10 +90,19 @@ impl DeviceCodeStore {
             .find(|code| code.user_code == user_code)
         {
             device_code.authorized = true;
+            info!(
+                "Device code '{}' authorized successfully.",
+                device_code.device_code
+            ); // Logging success
             return true;
         }
+        error!(
+            "Failed to authorize device code for user_code '{}'. Code not found or expired.",
+            user_code
+        ); // Logging error
         false
     }
+
     pub fn cleanup_expired_codes(&self) {
         let mut device_codes = self.device_codes.write().unwrap();
         let current_time = SystemTime::now()
@@ -100,7 +110,13 @@ impl DeviceCodeStore {
             .unwrap()
             .as_secs();
 
+        let initial_count = device_codes.len();
         device_codes.retain(|code| code.expires_at > current_time);
+
+        let removed_count = initial_count - device_codes.len();
+        if removed_count > 0 {
+            info!("Cleaned up {} expired device codes.", removed_count); // Logging cleanup
+        }
     }
 }
 
@@ -119,7 +135,6 @@ pub async fn device_authorization_endpoint(
     let expires_in = 600; // 10 minutes
     let interval = 5; // Polling interval in seconds
 
-    // Store device code
     let device_code_obj = DeviceCode {
         device_code: device_code.clone(),
         user_code: user_code.clone(),
@@ -134,6 +149,10 @@ pub async fn device_authorization_endpoint(
     };
 
     store.store_device_code(device_code_obj);
+    info!(
+        "Device code '{}' created for client '{}'.",
+        device_code, req.client_id
+    ); // Logging code creation
 
     HttpResponse::Ok().json(DeviceAuthorizationResponse {
         device_code,
@@ -157,6 +176,7 @@ pub async fn device_token_endpoint(
             .as_secs();
 
         if current_time > device_code_obj.expires_at {
+            error!("Device code '{}' has expired.", req.device_code); // Logging expiration
             return HttpResponse::BadRequest().json(DeviceTokenResponse {
                 access_token: None,
                 token_type: None,
@@ -165,6 +185,10 @@ pub async fn device_token_endpoint(
         }
 
         if !device_code_obj.authorized {
+            info!(
+                "Authorization pending for device code '{}'.",
+                req.device_code
+            ); // Logging pending authorization
             return HttpResponse::BadRequest().json(DeviceTokenResponse {
                 access_token: None,
                 token_type: None,
@@ -174,7 +198,6 @@ pub async fn device_token_endpoint(
 
         // Validate scopes (optional)
         let allowed_scopes = vec!["read", "write"];
-
         let scope_str = device_code_obj
             .scopes
             .clone()
@@ -186,6 +209,10 @@ pub async fn device_token_endpoint(
             .iter()
             .any(|scope| !allowed_scopes.contains(scope));
         if invalid_scope {
+            error!(
+                "Invalid scope requested for device code '{}'. Requested: {:?}",
+                req.device_code, requested_scopes
+            ); // Logging invalid scope
             return HttpResponse::BadRequest().json(DeviceTokenResponse {
                 access_token: None,
                 token_type: None,
@@ -193,7 +220,6 @@ pub async fn device_token_endpoint(
             });
         }
 
-        // Generate and return access token with scopes
         let access_token = Uuid::new_v4().to_string();
         token_store
             .store_access_token(
@@ -204,12 +230,18 @@ pub async fn device_token_endpoint(
             )
             .unwrap();
 
+        info!(
+            "Access token generated for device code '{}'.",
+            req.device_code
+        ); // Logging token generation
+
         HttpResponse::Ok().json(DeviceTokenResponse {
             access_token: Some(access_token),
             token_type: Some("Bearer".to_string()),
             error: None,
         })
     } else {
+        error!("Invalid device code '{}'.", req.device_code); // Logging invalid device code
         HttpResponse::BadRequest().json(DeviceTokenResponse {
             access_token: None,
             token_type: None,
