@@ -283,17 +283,29 @@ mod tests {
         assert!(!resp_body.user_code.is_empty());
     }
 
+    // New test: Ensure tokens are not issued for expired device codes
     #[actix_web::test]
-    async fn test_device_token_pending() {
+    async fn test_device_token_expired_code() {
         let store = web::Data::new(DeviceCodeStore::new());
         let token_store = web::Data::new(InMemoryTokenStore::new());
 
-        // Assuming `device_authorization_endpoint` was already called, and we have a device code
-        let device_code = "test_device_code".to_string();
+        // Add an expired device code
+        store.store_device_code(DeviceCode {
+            device_code: "expired_device_code".to_string(),
+            user_code: "user123".to_string(),
+            client_id: "client123".to_string(),
+            expires_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                - 10, // Expired 10 seconds ago
+            authorized: true,
+            scopes: Some("read write".to_string()), // Requested scopes
+        });
 
         let req_body = DeviceTokenRequest {
-            client_id: "test_client_id".to_string(),
-            device_code: device_code.clone(),
+            client_id: "client123".to_string(),
+            device_code: "expired_device_code".to_string(),
         };
 
         let app = test::init_service(
@@ -310,46 +322,130 @@ mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), 400); // Authorization pending
+        assert_eq!(resp.status(), 400); // Token request should fail due to expired code
+
+        let resp_body: DeviceTokenResponse = test::read_body_json(resp).await;
+        assert_eq!(resp_body.error.unwrap(), "expired_token");
     }
-}
 
-#[actix_web::test]
-async fn test_cleanup_expired_device_codes() {
-    let store = DeviceCodeStore::new();
+    // New test: Ensure invalid device codes return an error in polling request
+    #[actix_web::test]
+    async fn test_invalid_device_code_in_polling_request() {
+        let store = web::Data::new(DeviceCodeStore::new());
+        let token_store = web::Data::new(InMemoryTokenStore::new());
 
-    // Add an expired device code
-    store.store_device_code(DeviceCode {
-        device_code: "device123".to_string(),
-        user_code: "user123".to_string(),
-        client_id: "client123".to_string(),
-        expires_at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            + 600,
-        authorized: false,
-        scopes: Some("read".to_string()), // Ensure scope field is provided
-    });
+        let req_body = DeviceTokenRequest {
+            client_id: "client123".to_string(),
+            device_code: "invalid_device_code".to_string(),
+        };
 
-    // Add a valid device code
-    store.store_device_code(DeviceCode {
-        device_code: "valid_code".to_string(),
-        user_code: "valid_user_code".to_string(),
-        client_id: "client_id".to_string(),
-        expires_at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            + 600, // Expires in 10 minutes
-        authorized: false,
-        scopes: Some("read write".to_string()), // Add scopes field
-    });
+        let app = test::init_service(
+            App::new()
+                .app_data(store.clone())
+                .app_data(token_store.clone())
+                .route("/device_token", web::post().to(device_token_endpoint)),
+        )
+        .await;
 
-    // Call the cleanup method
-    store.cleanup_expired_codes();
+        let req = test::TestRequest::post()
+            .uri("/device_token")
+            .set_json(&req_body)
+            .to_request();
 
-    // Ensure only valid device codes remain
-    assert!(store.find_device_code("expired_code").is_none());
-    assert!(store.find_device_code("valid_code").is_some());
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 400); // Invalid device code should result in error
+
+        let resp_body: DeviceTokenResponse = test::read_body_json(resp).await;
+        assert_eq!(resp_body.error.unwrap(), "invalid_request");
+    }
+
+    // New test: Ensure token is issued only for authorized devices
+    #[actix_web::test]
+    async fn test_token_issued_for_authorized_devices_only() {
+        let store = web::Data::new(DeviceCodeStore::new());
+        let token_store = web::Data::new(InMemoryTokenStore::new());
+
+        // Add a non-authorized device code
+        store.store_device_code(DeviceCode {
+            device_code: "unauthorized_device_code".to_string(),
+            user_code: "user123".to_string(),
+            client_id: "client123".to_string(),
+            expires_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 600, // Expires in 10 minutes
+            authorized: false,                      // Not yet authorized
+            scopes: Some("read write".to_string()), // Requested scopes
+        });
+
+        let req_body = DeviceTokenRequest {
+            client_id: "client123".to_string(),
+            device_code: "unauthorized_device_code".to_string(),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(store.clone())
+                .app_data(token_store.clone())
+                .route("/device_token", web::post().to(device_token_endpoint)),
+        )
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/device_token")
+            .set_json(&req_body)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 400); // Token request should fail since device is not authorized
+
+        let resp_body: DeviceTokenResponse = test::read_body_json(resp).await;
+        assert_eq!(resp_body.error.unwrap(), "authorization_pending");
+    }
+
+    // Test to ensure that tokens are issued after authorization
+    #[actix_web::test]
+    async fn test_token_issued_after_authorization() {
+        let store = web::Data::new(DeviceCodeStore::new());
+        let token_store = web::Data::new(InMemoryTokenStore::new());
+
+        // Add an authorized device code
+        store.store_device_code(DeviceCode {
+            device_code: "authorized_device_code".to_string(),
+            user_code: "user123".to_string(),
+            client_id: "client123".to_string(),
+            expires_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 600, // Expires in 10 minutes
+            authorized: true,                       // Device has been authorized
+            scopes: Some("read write".to_string()), // Requested scopes
+        });
+
+        let req_body = DeviceTokenRequest {
+            client_id: "client123".to_string(),
+            device_code: "authorized_device_code".to_string(),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(store.clone())
+                .app_data(token_store.clone())
+                .route("/device_token", web::post().to(device_token_endpoint)),
+        )
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/device_token")
+            .set_json(&req_body)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 200); // Token should be issued successfully
+
+        let resp_body: DeviceTokenResponse = test::read_body_json(resp).await;
+        assert!(resp_body.access_token.is_some());
+    }
 }
