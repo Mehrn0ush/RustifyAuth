@@ -1,17 +1,16 @@
-use crate::auth::mock::{MockSessionManager, MockUserAuthenticator};
 use crate::config::OAuthConfig;
 use crate::core::authorization::AuthorizationCodeFlow;
 use crate::core::authorization::MockTokenGenerator;
+use crate::core::device_flow::{start_device_code_cleanup, DeviceCodeStore};
 use crate::core::token::{InMemoryTokenStore, RedisTokenStore};
 use crate::endpoints::register::ClientStore;
 use crate::routes::init_routes;
 use crate::storage::memory::MemoryCodeStore;
 use actix_web::{web, App, HttpServer};
 use security::tls::configure_tls;
+use std::sync::RwLock;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-use std::sync::RwLock;
 
 pub mod auth;
 pub mod auth_middleware;
@@ -53,6 +52,13 @@ pub fn create_auth_code_flow() -> Arc<Mutex<AuthorizationCodeFlow>> {
 
     // Wrap in Arc<Mutex<AuthorizationCodeFlow>> for shared ownership and mutable access
     Arc::new(Mutex::new(auth_code_flow))
+}
+
+// Function to start device code cleanup, exported for library users
+pub fn start_cleanup_task(device_code_store: Arc<DeviceCodeStore>) {
+    // Convert Arc<DeviceCodeStore> into web::Data<DeviceCodeStore>
+
+    start_device_code_cleanup(device_code_store.into());
 }
 
 #[actix_web::main]

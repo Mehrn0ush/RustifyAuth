@@ -1,9 +1,20 @@
 use crate::core::token::{InMemoryTokenStore, TokenStore};
+use actix_web::rt::time::interval;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+pub fn start_device_code_cleanup(store: web::Data<DeviceCodeStore>) {
+    actix_web::rt::spawn(async move {
+        let mut cleanup_interval = interval(Duration::from_secs(60)); // Run cleanup every minute
+        loop {
+            cleanup_interval.tick().await;
+            store.cleanup_expired_codes();
+        }
+    });
+}
 
 // Structs for Device Flow
 
@@ -79,6 +90,15 @@ impl DeviceCodeStore {
             return true;
         }
         false
+    }
+    pub fn cleanup_expired_codes(&self) {
+        let mut device_codes = self.device_codes.write().unwrap();
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        device_codes.retain(|code| code.expires_at > current_time);
     }
 }
 
@@ -235,4 +255,42 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), 400); // Authorization pending
     }
+}
+
+#[actix_web::test]
+async fn test_cleanup_expired_device_codes() {
+    let store = DeviceCodeStore::new();
+
+    // Add an expired device code
+    store.store_device_code(DeviceCode {
+        device_code: "expired_code".to_string(),
+        user_code: "user_code".to_string(),
+        client_id: "client_id".to_string(),
+        expires_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - 10, // Expired 10 seconds ago
+        authorized: false,
+    });
+
+    // Add a valid device code
+    store.store_device_code(DeviceCode {
+        device_code: "valid_code".to_string(),
+        user_code: "valid_user_code".to_string(),
+        client_id: "client_id".to_string(),
+        expires_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 600, // Expires in 10 minutes
+        authorized: false,
+    });
+
+    // Call the cleanup method
+    store.cleanup_expired_codes();
+
+    // Ensure only valid device codes remain
+    assert!(store.find_device_code("expired_code").is_none());
+    assert!(store.find_device_code("valid_code").is_some());
 }
