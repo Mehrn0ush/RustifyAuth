@@ -2,6 +2,7 @@ use crate::core::device_flow::{
     device_token_endpoint, DeviceCode, DeviceTokenRequest, DeviceTokenResponse,
 };
 use crate::core::token::{InMemoryTokenStore, TokenStore};
+use crate::security::rate_limit::RateLimiter;
 use crate::DeviceCodeStore;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -56,7 +57,8 @@ mod tests {
         store.store_device_code(DeviceCode {
             device_code: "test_device_code".to_string(),
             user_code: "user123".to_string(),
-            client_id: "client123".to_string(),
+            client_id: Some("client123".to_string()), // Wrap client_id in Some(...)
+            user_id: None,                            // Add user_id field, initializing as None
             expires_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -127,20 +129,24 @@ mod tests {
         let store = web::Data::new(DeviceCodeStore::new());
         let token_store = web::Data::new(InMemoryTokenStore::new());
 
+        // Initialize the rate limiter with a limit of 5 requests per minute (for example)
+        let rate_limiter = web::Data::new(RateLimiter::new(5, std::time::Duration::from_secs(60)));
+
         let device_code = "test_device_code".to_string();
 
-        // Add a device code with a valid scope
+        // Add a device code with valid scopes
         store.store_device_code(DeviceCode {
             device_code: device_code.clone(),
             user_code: "user123".to_string(),
-            client_id: "client123".to_string(),
+            client_id: Some("client123".to_string()), // Wrap client_id in Some(...)
+            user_id: Some("user_id_123".to_string()), // Provide a valid user_id
             expires_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
                 + 600, // Expires in 10 minutes
-            authorized: true,
-            scopes: Some("read write".to_string()), // Requested scopes
+            authorized: true,                         // Device is authorized
+            scopes: Some("read write".to_string()),   // Valid scopes requested
         });
 
         let req_body = DeviceTokenRequest {
@@ -150,21 +156,29 @@ mod tests {
 
         let app = test::init_service(
             App::new()
-                .app_data(store.clone())
-                .app_data(token_store.clone())
+                .app_data(store.clone()) // Add DeviceCodeStore
+                .app_data(token_store.clone()) // Add InMemoryTokenStore
+                .app_data(rate_limiter.clone()) // Add RateLimiter here
                 .route("/device_token", web::post().to(device_token_endpoint)),
         )
         .await;
 
+        // Send token request with valid device code and client ID
         let req = test::TestRequest::post()
             .uri("/device_token")
             .set_json(&req_body)
             .to_request();
 
+        // Perform the request and validate the response
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.status(), 200, "Expected 200 OK, got {}", resp.status());
 
         let resp_body: DeviceTokenResponse = test::read_body_json(resp).await;
-        assert!(resp_body.access_token.is_some());
+
+        // Ensure an access token is present in the response
+        assert!(
+            resp_body.access_token.is_some(),
+            "Access token is missing in the response"
+        );
     }
 }
