@@ -57,7 +57,8 @@ mod tests {
         store.store_device_code(DeviceCode {
             device_code: "test_device_code".to_string(),
             user_code: "user123".to_string(),
-            client_id: "client123".to_string(),
+            client_id: Some("client123".to_string()), // Wrap client_id in Some(...)
+            user_id: None,                            // Add user_id field, initializing as None
             expires_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -137,14 +138,15 @@ mod tests {
         store.store_device_code(DeviceCode {
             device_code: device_code.clone(),
             user_code: "user123".to_string(),
-            client_id: "client123".to_string(),
+            client_id: Some("client123".to_string()), // Wrap client_id in Some(...)
+            user_id: Some("user_id_123".to_string()), // Provide a valid user_id
             expires_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
                 + 600, // Expires in 10 minutes
-            authorized: true,                       // Device is authorized
-            scopes: Some("read write".to_string()), // Valid scopes requested
+            authorized: true,                         // Device is authorized
+            scopes: Some("read write".to_string()),   // Valid scopes requested
         });
 
         let req_body = DeviceTokenRequest {
