@@ -1,4 +1,5 @@
 use crate::core::token::{InMemoryTokenStore, TokenStore};
+use crate::security::rate_limit::RateLimiter;
 use actix_web::rt::time::interval;
 use actix_web::{web, HttpResponse};
 use log::{error, info}; // Added logging
@@ -176,85 +177,76 @@ pub async fn device_token_endpoint(
     req: web::Json<DeviceTokenRequest>,
     store: web::Data<DeviceCodeStore>,
     token_store: web::Data<InMemoryTokenStore>,
+    rate_limiter: web::Data<RateLimiter>,
 ) -> HttpResponse {
-    if let Some(device_code_obj) = store.find_device_code(&req.device_code) {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+    let client_id = &req.client_id;
 
-        if current_time > device_code_obj.expires_at {
-            error!("Device code '{}' has expired.", req.device_code); // Logging expiration
-            return HttpResponse::BadRequest().json(DeviceTokenResponse {
-                access_token: None,
-                token_type: None,
-                error: Some("expired_token".to_string()),
-            });
-        }
+    // Check if client is rate-limited
+    if rate_limiter.is_rate_limited(client_id) {
+        return HttpResponse::TooManyRequests().json(DeviceTokenResponse {
+            access_token: None,
+            token_type: None,
+            error: Some("rate_limit_exceeded".to_string()),
+        });
+    }
 
-        if !device_code_obj.authorized {
-            info!(
-                "Authorization pending for device code '{}'.",
-                req.device_code
-            ); // Logging pending authorization
-            return HttpResponse::BadRequest().json(DeviceTokenResponse {
-                access_token: None,
-                token_type: None,
-                error: Some("authorization_pending".to_string()),
-            });
-        }
+    match store.find_device_code(&req.device_code) {
+        Some(device_code_obj) => {
+            let current_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
 
-        // Validate scopes (optional)
-        let allowed_scopes = vec!["read", "write"];
-        let scope_str = device_code_obj
-            .scopes
-            .clone()
-            .unwrap_or_else(|| "".to_string());
+            if current_time > device_code_obj.expires_at {
+                error!("Device code '{}' has expired.", req.device_code);
+                return HttpResponse::BadRequest().json(DeviceTokenResponse {
+                    access_token: None,
+                    token_type: None,
+                    error: Some("expired_token".to_string()),
+                });
+            }
 
-        let requested_scopes = scope_str.split_whitespace().collect::<Vec<&str>>();
+            if !device_code_obj.authorized {
+                info!(
+                    "Authorization pending for device code '{}'.",
+                    req.device_code
+                );
+                return HttpResponse::BadRequest().json(DeviceTokenResponse {
+                    access_token: None,
+                    token_type: None,
+                    error: Some("authorization_pending".to_string()),
+                });
+            }
 
-        let invalid_scope = requested_scopes
-            .iter()
-            .any(|scope| !allowed_scopes.contains(scope));
-        if invalid_scope {
-            error!(
-                "Invalid scope requested for device code '{}'. Requested: {:?}",
-                req.device_code, requested_scopes
-            ); // Logging invalid scope
-            return HttpResponse::BadRequest().json(DeviceTokenResponse {
-                access_token: None,
-                token_type: None,
-                error: Some("invalid_scope".to_string()),
-            });
-        }
-
-        let access_token = Uuid::new_v4().to_string();
-        token_store
-            .store_access_token(
+            let access_token = Uuid::new_v4().to_string();
+            if let Err(e) = token_store.store_access_token(
                 &access_token,
                 &device_code_obj.client_id,
                 "user_id",
                 current_time + 3600,
-            )
-            .unwrap();
+            ) {
+                error!("Failed to store access token: {}", e);
+                return HttpResponse::InternalServerError().json(DeviceTokenResponse {
+                    access_token: None,
+                    token_type: None,
+                    error: Some("internal_server_error".to_string()),
+                });
+            }
 
-        info!(
-            "Access token generated for device code '{}'.",
-            req.device_code
-        ); // Logging token generation
-
-        HttpResponse::Ok().json(DeviceTokenResponse {
-            access_token: Some(access_token),
-            token_type: Some("Bearer".to_string()),
-            error: None,
-        })
-    } else {
-        error!("Invalid device code '{}'.", req.device_code); // Logging invalid device code
-        HttpResponse::BadRequest().json(DeviceTokenResponse {
-            access_token: None,
-            token_type: None,
-            error: Some("invalid_request".to_string()),
-        })
+            HttpResponse::Ok().json(DeviceTokenResponse {
+                access_token: Some(access_token),
+                token_type: Some("Bearer".to_string()),
+                error: None,
+            })
+        }
+        None => {
+            error!("Invalid device code '{}'.", req.device_code);
+            HttpResponse::BadRequest().json(DeviceTokenResponse {
+                access_token: None,
+                token_type: None,
+                error: Some("invalid_request".to_string()),
+            })
+        }
     }
 }
 
@@ -335,6 +327,7 @@ mod tests {
     async fn test_device_token_expired_code() {
         let store = web::Data::new(DeviceCodeStore::new());
         let token_store = web::Data::new(InMemoryTokenStore::new());
+        let rate_limiter = web::Data::new(RateLimiter::new(10, Duration::from_secs(60)));
 
         // Add an expired device code
         store.store_device_code(DeviceCode {
@@ -359,6 +352,7 @@ mod tests {
             App::new()
                 .app_data(store.clone())
                 .app_data(token_store.clone())
+                .app_data(rate_limiter.clone())
                 .route("/device_token", web::post().to(device_token_endpoint)),
         )
         .await;
@@ -380,6 +374,7 @@ mod tests {
     async fn test_invalid_device_code_in_polling_request() {
         let store = web::Data::new(DeviceCodeStore::new());
         let token_store = web::Data::new(InMemoryTokenStore::new());
+        let rate_limiter = web::Data::new(RateLimiter::new(10, Duration::from_secs(60)));
 
         let req_body = DeviceTokenRequest {
             client_id: "client123".to_string(),
@@ -390,6 +385,7 @@ mod tests {
             App::new()
                 .app_data(store.clone())
                 .app_data(token_store.clone())
+                .app_data(rate_limiter.clone())
                 .route("/device_token", web::post().to(device_token_endpoint)),
         )
         .await;
@@ -411,6 +407,7 @@ mod tests {
     async fn test_token_issued_for_authorized_devices_only() {
         let store = web::Data::new(DeviceCodeStore::new());
         let token_store = web::Data::new(InMemoryTokenStore::new());
+        let rate_limiter = web::Data::new(RateLimiter::new(10, Duration::from_secs(60)));
 
         // Add a non-authorized device code
         store.store_device_code(DeviceCode {
@@ -435,6 +432,7 @@ mod tests {
             App::new()
                 .app_data(store.clone())
                 .app_data(token_store.clone())
+                .app_data(rate_limiter.clone())
                 .route("/device_token", web::post().to(device_token_endpoint)),
         )
         .await;
@@ -456,6 +454,7 @@ mod tests {
     async fn test_token_issued_after_authorization() {
         let store = web::Data::new(DeviceCodeStore::new());
         let token_store = web::Data::new(InMemoryTokenStore::new());
+        let rate_limiter = web::Data::new(RateLimiter::new(10, Duration::from_secs(60)));
 
         // Add an authorized device code
         store.store_device_code(DeviceCode {
@@ -480,6 +479,7 @@ mod tests {
             App::new()
                 .app_data(store.clone())
                 .app_data(token_store.clone())
+                .app_data(rate_limiter.clone())
                 .route("/device_token", web::post().to(device_token_endpoint)),
         )
         .await;
@@ -495,11 +495,169 @@ mod tests {
         let resp_body: DeviceTokenResponse = test::read_body_json(resp).await;
         assert!(resp_body.access_token.is_some());
     }
-}
 
-/*
-Environment Variables for Device Authorization
-VERIFICATION_URI: The URL where the user enters their user code (default: https://yourdomain.com/device).
-EXPIRES_IN: The expiration time for device codes in seconds (default: 600 seconds).
-INTERVAL: The interval in seconds for the client to poll for token issuance (default: 5 seconds).
-*/
+    #[actix_web::test]
+    async fn test_rate_limiter_allows_requests_within_limit() {
+        let store = web::Data::new(DeviceCodeStore::new());
+        let token_store = web::Data::new(InMemoryTokenStore::new());
+
+        // Initialize RateLimiter with a limit of 3 requests per minute
+        let rate_limiter = web::Data::new(RateLimiter::new(3, Duration::from_secs(60)));
+
+        // Add a valid device code
+        store.store_device_code(DeviceCode {
+            device_code: "test_device_code".to_string(),
+            user_code: "user123".to_string(),
+            client_id: "client123".to_string(),
+            expires_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 600, // Expires in 10 minutes
+            authorized: true,
+            scopes: Some("read write".to_string()),
+        });
+
+        let req_body = DeviceTokenRequest {
+            client_id: "client123".to_string(),
+            device_code: "test_device_code".to_string(),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(store.clone())
+                .app_data(token_store.clone())
+                .app_data(rate_limiter.clone())
+                .route("/device_token", web::post().to(device_token_endpoint)),
+        )
+        .await;
+
+        // Make 3 requests within the limit
+        for _ in 0..3 {
+            let req = test::TestRequest::post()
+                .uri("/device_token")
+                .set_json(&req_body)
+                .to_request();
+
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), 200);
+        }
+    }
+
+    #[actix_web::test]
+    async fn test_rate_limiter_exceeds_limit() {
+        let store = web::Data::new(DeviceCodeStore::new());
+        let token_store = web::Data::new(InMemoryTokenStore::new());
+
+        // Initialize RateLimiter with a limit of 3 requests per minute
+        let rate_limiter = web::Data::new(RateLimiter::new(3, Duration::from_secs(60)));
+
+        // Add a valid device code
+        store.store_device_code(DeviceCode {
+            device_code: "test_device_code".to_string(),
+            user_code: "user123".to_string(),
+            client_id: "client123".to_string(),
+            expires_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 600, // Expires in 10 minutes
+            authorized: true,
+            scopes: Some("read write".to_string()),
+        });
+
+        let req_body = DeviceTokenRequest {
+            client_id: "client123".to_string(),
+            device_code: "test_device_code".to_string(),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(store.clone())
+                .app_data(token_store.clone())
+                .app_data(rate_limiter.clone())
+                .route("/device_token", web::post().to(device_token_endpoint)),
+        )
+        .await;
+
+        // Make 3 requests within the limit
+        for _ in 0..3 {
+            let req = test::TestRequest::post()
+                .uri("/device_token")
+                .set_json(&req_body)
+                .to_request();
+
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), 200);
+        }
+
+        // Make 4th request (should be rate-limited)
+        let req = test::TestRequest::post()
+            .uri("/device_token")
+            .set_json(&req_body)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 429); // Expecting 429 Too Many Requests
+    }
+
+    #[actix_web::test]
+    async fn test_rate_limiter_resets_after_window() {
+        let store = web::Data::new(DeviceCodeStore::new());
+        let token_store = web::Data::new(InMemoryTokenStore::new());
+
+        // Initialize RateLimiter with a limit of 3 requests per minute
+        let rate_limiter = web::Data::new(RateLimiter::new(3, Duration::from_secs(2))); // 2 seconds window
+
+        // Add a valid device code
+        store.store_device_code(DeviceCode {
+            device_code: "test_device_code".to_string(),
+            user_code: "user123".to_string(),
+            client_id: "client123".to_string(),
+            expires_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 600, // Expires in 10 minutes
+            authorized: true,
+            scopes: Some("read write".to_string()),
+        });
+
+        let req_body = DeviceTokenRequest {
+            client_id: "client123".to_string(),
+            device_code: "test_device_code".to_string(),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(store.clone())
+                .app_data(token_store.clone())
+                .app_data(rate_limiter.clone())
+                .route("/device_token", web::post().to(device_token_endpoint)),
+        )
+        .await;
+
+        // Make 3 requests within the limit
+        for _ in 0..3 {
+            let req = test::TestRequest::post()
+                .uri("/device_token")
+                .set_json(&req_body)
+                .to_request();
+
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), 200);
+        }
+
+        // Wait for the rate limit window to reset
+        actix_web::rt::time::sleep(Duration::from_secs(3)).await; // Wait for 3 seconds to exceed window
+
+        // Now the rate limiter should reset, and the next request should succeed
+        let req = test::TestRequest::post()
+            .uri("/device_token")
+            .set_json(&req_body)
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 200); // This request should pass after the reset
+    }
+}

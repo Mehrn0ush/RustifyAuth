@@ -44,6 +44,9 @@ hex = "0.4.3"
 rsa = "0.9.6"
 actix-rt = "2.10.0"
 urlencoding = "2.1.3"
+actix-service = "2.0.2"
+futures = "0.3.31"
+actix-redis = "0.13.1"
 
 [dev-dependencies]
 serial_test = "3.1.1"
