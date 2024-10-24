@@ -1,6 +1,5 @@
-use crate::core::token::TokenStore;
-//use crate::auth::rbac::rbac_check;
 use crate::core::token::InMemoryTokenStore;
+use crate::core::token::TokenStore;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use serde::{Deserialize, Serialize};
@@ -105,18 +104,11 @@ pub fn rbac_check(token: &str, required_role: &str) -> Result<(), &'static str> 
         Err("Unauthorized")
     }
 }
-
-// Tests for client registration
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::token::InMemoryTokenStore;
-    use crate::endpoints::register;
-    use crate::endpoints::register::register_client_handler;
-    use crate::endpoints::register::ClientMetadata;
-    use crate::endpoints::register::ClientRegistrationResponse;
-    use actix_web::{test, App};
+    use actix_web::{test, web, App};
     use std::sync::RwLock;
 
     #[actix_web::test]
@@ -146,5 +138,145 @@ mod tests {
         let resp = test::call_service(&app, update_req).await;
 
         assert_eq!(resp.status(), 404);
+    }
+
+    #[actix_web::test]
+    async fn test_update_client_unauthorized() {
+        let store = web::Data::new(RwLock::new(ClientStore::new(InMemoryTokenStore::new())));
+
+        let update_metadata = ClientUpdateRequest {
+            client_name: Some("Unauthorized Update".to_string()),
+            redirect_uris: None,
+            grant_types: None,
+            response_types: None,
+            software_statement: None,
+        };
+
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/update/{client_id}",
+            web::put().to(update_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
+
+        let update_req = test::TestRequest::put()
+            .uri("/update/existing_client_id")
+            .insert_header(("Authorization", "Bearer invalid_token"))
+            .set_json(&update_metadata)
+            .to_request();
+
+        let resp = test::call_service(&app, update_req).await;
+
+        assert_eq!(resp.status(), 401); // Unauthorized
+    }
+
+    #[actix_web::test]
+    async fn test_update_client_name() {
+        let store = web::Data::new(RwLock::new(ClientStore::new(InMemoryTokenStore::new())));
+
+        let client_id = "existing_client_id".to_string();
+
+        let initial_client = Client {
+            client_id: client_id.clone(),
+            client_name: "Initial Client".to_string(),
+            redirect_uris: vec!["https://initial.com".to_string()],
+            grant_types: vec!["authorization_code".to_string()],
+            response_types: vec!["code".to_string()],
+            software_statement: None,
+            tbid: None,
+        };
+
+        store
+            .write()
+            .unwrap()
+            .clients
+            .insert(client_id.clone(), initial_client);
+
+        // Update the client_name
+        let update_metadata = ClientUpdateRequest {
+            client_name: Some("Updated Client".to_string()),
+            redirect_uris: None,
+            grant_types: None,
+            response_types: None,
+            software_statement: None,
+        };
+
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/update/{client_id}",
+            web::put().to(update_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
+
+        let update_req = test::TestRequest::put()
+            .uri(&format!("/update/{}", client_id))
+            .insert_header(("Authorization", "Bearer valid_admin_token"))
+            .set_json(&update_metadata)
+            .to_request();
+
+        let resp = test::call_service(&app, update_req).await;
+        assert_eq!(resp.status(), 200); 
+
+        // Hold the read lock for the duration of the assertions
+        let store_read = store.read().unwrap(); // Extend the lifetime of the lock
+        let updated_client = store_read.clients.get(&client_id).unwrap(); 
+
+        // Now you can safely use updated_client for assertions
+        assert_eq!(updated_client.client_name, "Updated Client");
+    }
+
+    #[actix_web::test]
+    async fn test_update_client_with_missing_fields() {
+        let store = web::Data::new(RwLock::new(ClientStore::new(InMemoryTokenStore::new())));
+
+        let client_id = "existing_client_id".to_string();
+
+        let mut initial_client = Client {
+            client_id: client_id.clone(),
+            client_name: "Initial Client".to_string(),
+            redirect_uris: vec!["https://initial.com".to_string()],
+            grant_types: vec!["authorization_code".to_string()],
+            response_types: vec!["code".to_string()],
+            software_statement: None,
+            tbid: None,
+        };
+
+        store
+            .write()
+            .unwrap()
+            .clients
+            .insert(client_id.clone(), initial_client.clone());
+
+        // Update with only redirect URIs, leave other fields missing
+        let update_metadata = ClientUpdateRequest {
+            client_name: None,
+            redirect_uris: Some(vec!["https://new-uri.com".to_string()]),
+            grant_types: None,
+            response_types: None,
+            software_statement: None,
+        };
+
+        let app = test::init_service(App::new().app_data(store.clone()).route(
+            "/update/{client_id}",
+            web::put().to(update_client_handler::<InMemoryTokenStore>),
+        ))
+        .await;
+
+        let update_req = test::TestRequest::put()
+            .uri(&format!("/update/{}", client_id))
+            .insert_header(("Authorization", "Bearer valid_admin_token"))
+            .set_json(&update_metadata)
+            .to_request();
+
+        let resp = test::call_service(&app, update_req).await;
+        assert_eq!(resp.status(), 200); // Successful update
+
+        // Hold the read lock for the duration of the assertions
+        let store_read = store.read().unwrap(); // Extend the lifetime of the read lock
+        let updated_client = store_read.clients.get(&client_id).unwrap(); // Access the client
+
+        assert_eq!(
+            updated_client.redirect_uris,
+            vec!["https://new-uri.com".to_string()]
+        );
+        assert_eq!(updated_client.client_name, "Initial Client"); // Should not be changed
     }
 }

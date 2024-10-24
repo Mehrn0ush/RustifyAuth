@@ -49,7 +49,9 @@ pub trait TokenStore: Send + Sync {
 
     fn is_token_revoked(&self, token: &str) -> Result<bool, TokenError>;
 
-    fn cleanup_expired_tokens(&self) -> Result<(), TokenError>; // Regularly clean up expired tokens
+    fn revoke_refresh_token(&self, token: &str) -> Result<(), TokenError>;
+
+    fn cleanup_expired_tokens(&self) -> Result<(), TokenError>;
 }
 
 #[derive(Debug, Clone)]
@@ -201,6 +203,19 @@ impl TokenStore for RedisTokenStore {
         Ok(result.is_none() || result.as_deref() == Some("revoked"))
     }
 
+    fn revoke_refresh_token(&self, token: &str) -> Result<(), TokenError> {
+        let mut conn = self.conn.lock().map_err(|_| TokenError::InternalError)?;
+        let result: Option<String> = conn.get(token).map_err(|_| TokenError::InternalError)?;
+
+        if result.is_some() {
+            conn.del(token).map_err(|_| TokenError::InternalError)?;
+            println!("Revoked refresh token in Redis: {}", token);
+            Ok(())
+        } else {
+            println!("Refresh token not found in Redis: {}", token);
+            Err(TokenError::InvalidToken)
+        }
+    }
     fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
         println!("Redis automatically cleans up expired tokens.");
         Ok(()) // Redis handles this automatically with TTL
@@ -245,9 +260,18 @@ impl RedisTokenStore {
 
     */
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshTokenData {
+    pub token: String,
+    pub client_id: String,
+    pub user_id: String,
+    pub expiration: u64,
+}
+
 #[derive(Debug)]
 pub struct InMemoryTokenStore {
     revoked_tokens: Mutex<HashMap<String, u64>>, // Token -> Expiration timestamp
+    refresh_tokens: Arc<Mutex<HashMap<String, RefreshTokenData>>>,
     active_tokens: Mutex<HashMap<String, Token>>,
 }
 
@@ -257,6 +281,7 @@ impl InMemoryTokenStore {
         Self {
             revoked_tokens: Mutex::new(HashMap::new()),
             active_tokens: Mutex::new(HashMap::new()),
+            refresh_tokens: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -287,6 +312,55 @@ impl InMemoryTokenStore {
         })
     }
 
+    fn store_refresh_token(
+        &self,
+        token: &str,
+        client_id: &str,
+        user_id: &str,
+        exp: u64,
+        _tbid: Option<String>,
+    ) -> Result<(), TokenError> {
+        let mut refresh_tokens = self.refresh_tokens.lock().unwrap();
+        refresh_tokens.insert(
+            token.to_string(),
+            RefreshTokenData {
+                token: token.to_string(),
+                client_id: client_id.to_string(),
+                user_id: user_id.to_string(),
+                expiration: exp,
+            },
+        );
+        Ok(())
+    }
+
+    fn validate_refresh_token(
+        &self,
+        token: &str,
+        client_id: &str,
+    ) -> Result<(String, u64), TokenError> {
+        let refresh_tokens = self.refresh_tokens.lock().unwrap();
+        if let Some(token_data) = refresh_tokens.get(token) {
+            if token_data.expiration > get_current_time()? {
+                if token_data.client_id == client_id {
+                    return Ok((token_data.user_id.clone(), token_data.expiration));
+                } else {
+                    return Err(TokenError::InvalidClient);
+                }
+            } else {
+                return Err(TokenError::ExpiredToken);
+            }
+        }
+        Err(TokenError::InvalidToken)
+    }
+
+    fn revoke_refresh_token(&self, token: &str) -> Result<(), TokenError> {
+        let mut refresh_tokens = self.refresh_tokens.lock().unwrap();
+        if refresh_tokens.remove(token).is_some() {
+            Ok(())
+        } else {
+            Err(TokenError::InvalidToken)
+        }
+    }
     fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
         let current_time = get_current_time()?;
         let mut active_tokens = self.get_active_tokens()?;
@@ -331,15 +405,14 @@ impl TokenStore for InMemoryTokenStore {
         exp: u64,
         tbid: Option<String>,
     ) -> Result<(), TokenError> {
-        let mut active_tokens = self.get_active_tokens()?;
-        active_tokens.insert(
+        let mut refresh_tokens = self.refresh_tokens.lock().unwrap();
+        refresh_tokens.insert(
             token.to_string(),
-            Token {
-                value: token.to_string(),
-                expiration: exp,
+            RefreshTokenData {
+                token: token.to_string(),
                 client_id: client_id.to_string(),
                 user_id: user_id.to_string(),
-                tbid,
+                expiration: exp,
             },
         );
         Ok(())
@@ -348,18 +421,21 @@ impl TokenStore for InMemoryTokenStore {
     fn validate_refresh_token(
         &self,
         token: &str,
-        _client_id: &str,
+        client_id: &str,
     ) -> Result<(String, u64), TokenError> {
-        let active_tokens = self.get_active_tokens()?;
-        if let Some(token_data) = active_tokens.get(token) {
+        let refresh_tokens = self.refresh_tokens.lock().unwrap();
+        if let Some(token_data) = refresh_tokens.get(token) {
             if token_data.expiration > get_current_time()? {
-                return Ok((token_data.user_id.clone(), token_data.expiration));
+                if token_data.client_id == client_id {
+                    return Ok((token_data.user_id.clone(), token_data.expiration));
+                } else {
+                    return Err(TokenError::InvalidClient);
+                }
             } else {
                 return Err(TokenError::ExpiredToken);
             }
-        } else {
-            Err(TokenError::InvalidToken)
         }
+        Err(TokenError::InvalidToken)
     }
 
     fn revoke_token(&self, token: String, exp: u64) -> Result<(), TokenError> {
@@ -388,6 +464,14 @@ impl TokenStore for InMemoryTokenStore {
         }
         // Token is not revoked or already expired
         Ok(false)
+    }
+    fn revoke_refresh_token(&self, token: &str) -> Result<(), TokenError> {
+        let mut refresh_tokens = self.refresh_tokens.lock().unwrap();
+        if refresh_tokens.remove(token).is_some() {
+            Ok(())
+        } else {
+            Err(TokenError::InvalidToken)
+        }
     }
 
     fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {
@@ -1234,6 +1318,15 @@ cwIDAQAB
                 token, contains
             );
             Ok(!contains) // Token is revoked if it's not in the store
+        }
+
+        fn revoke_refresh_token(&self, token: &str) -> Result<(), TokenError> {
+            let mut tokens = self.tokens.lock().unwrap();
+            if tokens.remove(token).is_some() {
+                Ok(())
+            } else {
+                Err(TokenError::InvalidToken)
+            }
         }
 
         fn cleanup_expired_tokens(&self) -> Result<(), TokenError> {

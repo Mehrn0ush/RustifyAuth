@@ -57,8 +57,6 @@ impl<T: TokenStore> ClientStore<T> {
 }
 
 // Client registration handler
-
-// Client registration handler
 pub async fn register_client_handler<T: TokenStore>(
     store: web::Data<RwLock<ClientStore<T>>>,
     metadata: web::Json<ClientMetadata>,
