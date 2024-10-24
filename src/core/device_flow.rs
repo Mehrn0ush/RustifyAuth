@@ -21,6 +21,7 @@ pub fn start_device_code_cleanup(store: web::Data<DeviceCodeStore>) {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeviceAuthorizationRequest {
     pub client_id: String,
+    pub scope: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,6 +53,7 @@ pub struct DeviceCode {
     pub client_id: String,
     pub expires_at: u64,
     pub authorized: bool,
+    pub scopes: Option<String>,
 }
 
 // In-memory storage for device codes
@@ -128,6 +130,7 @@ pub async fn device_authorization_endpoint(
             .as_secs()
             + expires_in,
         authorized: false,
+        scopes: req.scope.clone(),
     };
 
     store.store_device_code(device_code_obj);
@@ -169,8 +172,29 @@ pub async fn device_token_endpoint(
             });
         }
 
-        // Generate and return access token
-        let access_token = Uuid::new_v4().to_string(); // Generate token
+        // Validate scopes (optional)
+        let allowed_scopes = vec!["read", "write"];
+
+        let scope_str = device_code_obj
+            .scopes
+            .clone()
+            .unwrap_or_else(|| "".to_string());
+
+        let requested_scopes = scope_str.split_whitespace().collect::<Vec<&str>>();
+
+        let invalid_scope = requested_scopes
+            .iter()
+            .any(|scope| !allowed_scopes.contains(scope));
+        if invalid_scope {
+            return HttpResponse::BadRequest().json(DeviceTokenResponse {
+                access_token: None,
+                token_type: None,
+                error: Some("invalid_scope".to_string()),
+            });
+        }
+
+        // Generate and return access token with scopes
+        let access_token = Uuid::new_v4().to_string();
         token_store
             .store_access_token(
                 &access_token,
@@ -205,6 +229,7 @@ mod tests {
 
         let req_body = DeviceAuthorizationRequest {
             client_id: "test_client_id".to_string(),
+            scope: None, // Add scope field
         };
 
         let app = test::init_service(App::new().app_data(store.clone()).route(
@@ -263,15 +288,16 @@ async fn test_cleanup_expired_device_codes() {
 
     // Add an expired device code
     store.store_device_code(DeviceCode {
-        device_code: "expired_code".to_string(),
-        user_code: "user_code".to_string(),
-        client_id: "client_id".to_string(),
+        device_code: "device123".to_string(),
+        user_code: "user123".to_string(),
+        client_id: "client123".to_string(),
         expires_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            - 10, // Expired 10 seconds ago
+            + 600,
         authorized: false,
+        scopes: Some("read".to_string()), // Ensure scope field is provided
     });
 
     // Add a valid device code
@@ -285,6 +311,7 @@ async fn test_cleanup_expired_device_codes() {
             .as_secs()
             + 600, // Expires in 10 minutes
         authorized: false,
+        scopes: Some("read write".to_string()), // Add scopes field
     });
 
     // Call the cleanup method
