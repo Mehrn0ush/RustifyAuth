@@ -56,6 +56,13 @@ pub struct DeviceCode {
     pub authorized: bool,
     pub scopes: Option<String>,
 }
+// Configuration struct for device flow settings
+#[derive(Debug, Clone)]
+pub struct DeviceFlowConfig {
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
 
 // In-memory storage for device codes
 #[derive(Debug, Clone)]
@@ -124,6 +131,7 @@ impl DeviceCodeStore {
 pub async fn device_authorization_endpoint(
     req: web::Json<DeviceAuthorizationRequest>,
     store: web::Data<DeviceCodeStore>,
+    config: web::Data<DeviceFlowConfig>,
 ) -> HttpResponse {
     let device_code = Uuid::new_v4().to_string();
     let user_code = Uuid::new_v4()
@@ -157,7 +165,7 @@ pub async fn device_authorization_endpoint(
     HttpResponse::Ok().json(DeviceAuthorizationResponse {
         device_code,
         user_code,
-        verification_uri: "https://yourdomain.com/device".to_string(), // Your device verification page
+        verification_uri: config.verification_uri.clone(), // Your device verification page
         expires_in,
         interval,
     })
@@ -250,6 +258,31 @@ pub async fn device_token_endpoint(
     }
 }
 
+use std::env;
+
+/*
+You can load the configuration values (like verification_uri, expires_in, and interval) from environment variables or a configuration file.
+*/
+
+fn load_device_flow_config() -> DeviceFlowConfig {
+    let verification_uri = env::var("VERIFICATION_URI")
+        .unwrap_or_else(|_| "https://yourdomain.com/device".to_string());
+    let expires_in = env::var("EXPIRES_IN")
+        .unwrap_or_else(|_| "600".to_string())
+        .parse()
+        .unwrap_or(600);
+    let interval = env::var("INTERVAL")
+        .unwrap_or_else(|_| "5".to_string())
+        .parse()
+        .unwrap_or(5);
+
+    DeviceFlowConfig {
+        verification_uri,
+        expires_in,
+        interval,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,15 +292,27 @@ mod tests {
     async fn test_device_authorization_success() {
         let store = web::Data::new(DeviceCodeStore::new());
 
+        // Create a mock config for the test
+        let device_flow_config = web::Data::new(DeviceFlowConfig {
+            verification_uri: "https://test-domain.com/device".to_string(),
+            expires_in: 600,
+            interval: 5,
+        });
+
         let req_body = DeviceAuthorizationRequest {
             client_id: "test_client_id".to_string(),
             scope: None, // Add scope field
         };
 
-        let app = test::init_service(App::new().app_data(store.clone()).route(
-            "/device_authorize",
-            web::post().to(device_authorization_endpoint),
-        ))
+        let app = test::init_service(
+            App::new()
+                .app_data(store.clone())
+                .app_data(device_flow_config.clone()) // Add mock config
+                .route(
+                    "/device_authorize",
+                    web::post().to(device_authorization_endpoint),
+                ),
+        )
         .await;
 
         let req = test::TestRequest::post()
@@ -281,6 +326,8 @@ mod tests {
         let resp_body: DeviceAuthorizationResponse = test::read_body_json(resp).await;
         assert!(!resp_body.device_code.is_empty());
         assert!(!resp_body.user_code.is_empty());
+        assert_eq!(resp_body.verification_uri, "https://test-domain.com/device");
+        // Validate the verification_uri
     }
 
     // New test: Ensure tokens are not issued for expired device codes
@@ -449,3 +496,10 @@ mod tests {
         assert!(resp_body.access_token.is_some());
     }
 }
+
+/*
+Environment Variables for Device Authorization
+VERIFICATION_URI: The URL where the user enters their user code (default: https://yourdomain.com/device).
+EXPIRES_IN: The expiration time for device codes in seconds (default: 600 seconds).
+INTERVAL: The interval in seconds for the client to poll for token issuance (default: 5 seconds).
+*/
