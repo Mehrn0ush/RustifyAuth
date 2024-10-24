@@ -56,8 +56,6 @@ pub fn create_auth_code_flow() -> Arc<Mutex<AuthorizationCodeFlow>> {
 
 // Function to start device code cleanup, exported for library users
 pub fn start_cleanup_task(device_code_store: Arc<DeviceCodeStore>) {
-    // Convert Arc<DeviceCodeStore> into web::Data<DeviceCodeStore>
-
     start_device_code_cleanup(device_code_store.into());
 }
 
