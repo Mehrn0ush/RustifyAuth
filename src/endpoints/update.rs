@@ -213,11 +213,11 @@ mod tests {
             .to_request();
 
         let resp = test::call_service(&app, update_req).await;
-        assert_eq!(resp.status(), 200); 
+        assert_eq!(resp.status(), 200);
 
         // Hold the read lock for the duration of the assertions
         let store_read = store.read().unwrap(); // Extend the lifetime of the lock
-        let updated_client = store_read.clients.get(&client_id).unwrap(); 
+        let updated_client = store_read.clients.get(&client_id).unwrap();
 
         // Now you can safely use updated_client for assertions
         assert_eq!(updated_client.client_name, "Updated Client");
