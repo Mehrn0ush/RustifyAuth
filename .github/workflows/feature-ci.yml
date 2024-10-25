@@ -13,17 +13,61 @@ jobs:
         image: redis
         ports:
           - 6379:6379
+      postgres:
+        image: postgres:13
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: rustify_auth
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: rustify_auth_db
+        options: >-
+          --health-cmd "pg_isready -U rustify_auth"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5  
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-build-
 
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
 
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        until pg_isready -h localhost -p 5432 -U rustify_auth; do
+          sleep 1
+        done
+
+    - name: Run migrations (if any)
+      env:
+        DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
+      run: |
+        # Replace with actual migration command
+        echo "Migrations completed"
+
     - name: Run cargo test
       env:
+        DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
         REDIS_URL: redis://localhost:6379
         JWT_SECRET: test_secret
       run: cargo test -- --test-threads=1
@@ -33,6 +77,22 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-build-
 
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
@@ -48,10 +108,26 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-build-
+
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
 
-
-
+    - name: Run linter
+      run: cargo clippy -- -D warnings
