@@ -6,8 +6,13 @@ use crate::core::token::{InMemoryTokenStore, RedisTokenStore};
 use crate::endpoints::register::ClientStore;
 use crate::routes::init_routes;
 use crate::storage::memory::MemoryCodeStore;
+use crate::storage::postgres::PostgresBackend;
+use crate::storage::StorageBackend;
 use actix_web::{web, App, HttpServer};
+use deadpool_postgres::{Manager, Pool};
 use security::tls::configure_tls;
+use sqlx::migrate::MigrateDatabase;
+use sqlx::postgres::PgPoolOptions;
 use std::sync::RwLock;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -85,4 +90,29 @@ async fn main() -> std::io::Result<()> {
     .bind(("127.0.0.1", 8080))?
     .run()
     .await
+}
+
+#[tokio::main]
+async fn main1() -> Result<(), sqlx::Error> {
+    // Ensure the database is set up
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    if !sqlx::Postgres::database_exists(&database_url).await? {
+        sqlx::Postgres::create_database(&database_url).await?;
+        println!("Database created");
+    }
+
+    // Connect to the database and run migrations
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+
+    sqlx::migrate!().run(&pool).await?; // This runs the migrations
+
+    println!("Migrations applied");
+
+    // Your app initialization code here
+
+    Ok(())
 }

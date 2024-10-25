@@ -1,10 +1,17 @@
 // src/config.rs
+use serde::Deserialize;
 use std::env;
 
+#[derive(Deserialize, Debug)]
+pub struct PostgresConfig {
+    pub db_url: String,
+    pub pool_size: usize,
+}
 pub struct OAuthConfig {
     pub google_client_id: String,
     pub google_client_secret: String,
     pub google_redirect_uri: String,
+    pub storage_backend: String,
 }
 
 impl OAuthConfig {
@@ -19,6 +26,8 @@ impl OAuthConfig {
             google_client_id,
             google_client_secret,
             google_redirect_uri,
+            storage_backend: std::env::var("STORAGE_BACKEND")
+                .unwrap_or_else(|_| "in_memory".to_string()), // Default to in_memory
         }
     }
 }
