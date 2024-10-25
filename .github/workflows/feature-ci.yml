@@ -25,7 +25,7 @@ jobs:
           --health-cmd "pg_isready -U rustify_auth"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5  
+          --health-retries 5
 
     steps:
     - name: Checkout code
@@ -57,12 +57,22 @@ jobs:
         until pg_isready -h localhost -p 5432 -U rustify_auth; do
           sleep 1
         done
+        sleep 5  # Extra wait to ensure the service is fully ready
 
-    - name: Run migrations (if any)
+    - name: Run migrations
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
-        # Replace with actual migration command
+        # Add the actual migration commands here or run a script if migrations are stored in a file
+        # For example, if using Diesel or SQLx, replace with the correct command:
+        echo "CREATE TABLE IF NOT EXISTS tokens (
+                  access_token VARCHAR PRIMARY KEY,
+                  refresh_token VARCHAR,
+                  expires_at TIMESTAMP,
+                  scope VARCHAR,
+                  client_id VARCHAR REFERENCES clients(client_id),
+                  token_type VARCHAR DEFAULT 'Bearer'
+               );" | psql $DATABASE_URL
         echo "Migrations completed"
 
     - name: Run cargo test
