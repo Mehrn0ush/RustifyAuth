@@ -21,6 +21,7 @@ pub enum OAuthError {
     InvalidCredentials,
     SessionNotFound,
     InvalidToken,
+    DatabaseError,
 }
 
 /// Struct representing an OAuth2 error response.
@@ -108,7 +109,11 @@ impl From<OAuthError> for OAuthErrorResponse {
                 Some("The token provided is invalid."),
                 None,
             ),
-            // Handle other error variants accordingly
+            OAuthError::DatabaseError => OAuthErrorResponse::new(
+                "database_error",
+                Some("A database error occurred during the operation."),
+                None,
+            ),
         }
     }
 }
