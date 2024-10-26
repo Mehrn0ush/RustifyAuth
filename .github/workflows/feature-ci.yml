@@ -109,7 +109,7 @@ jobs:
         JWT_SECRET: test_secret
         RUST_BACKTRACE: full
         RUST_LOG: debug
-      run: cargo test -- --test-threads=1
+      run: RUST_BACKTRACE=1 cargo test -- --test-threads=1
 
   format:
     runs-on: ubuntu-latest
