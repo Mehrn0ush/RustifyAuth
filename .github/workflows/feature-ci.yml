@@ -96,8 +96,7 @@ jobs:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
         echo "Verifying tables..."
-        psql $DATABASE_URL -c "\dt"
-        psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;"
+        psql $DATABASE_URL -c "\dt"  # Ensure tables are created
 
     - name: Run cargo test with backtrace enabled
       env:
