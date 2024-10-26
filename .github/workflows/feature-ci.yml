@@ -71,7 +71,7 @@ jobs:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
         echo "Running migrations with schema setup..."
-        psql $DATABASE_URL <<-EOF
+        psql $DATABASE_URL <<EOF
           DROP TABLE IF EXISTS tokens CASCADE;
           DROP TABLE IF EXISTS clients CASCADE;
           CREATE TABLE IF NOT EXISTS clients (
@@ -99,6 +99,13 @@ jobs:
         psql $DATABASE_URL -c "\dt"  # Check if tables exist
         psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;" || echo "No data in clients table"
         psql $DATABASE_URL -c "SELECT * FROM tokens LIMIT 1;" || echo "No data in tokens table"
+
+    - name: Check PostgreSQL User Permissions
+      env:
+        DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
+      run: |
+        echo "Checking PostgreSQL user permissions..."
+        psql $DATABASE_URL -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rustify_auth;"
 
     - name: Run cargo test with backtrace enabled
       env:
