@@ -1,10 +1,12 @@
 use crate::auth::rbac::rbac_check;
 use crate::core::token::TokenStore;
+use crate::core::types::{ActionMetadata, ClientUpdateResponse as CoreClientUpdateResponse};
 use crate::endpoints::register::Client as RegisterClient;
 use crate::endpoints::update::Client as UpdateClient;
 use crate::endpoints::update::ClientStore;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 

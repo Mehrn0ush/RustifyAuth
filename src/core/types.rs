@@ -110,3 +110,22 @@ pub enum RegistrationError {
     InvalidRequest,
     InvalidGrant,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ActionMetadata {
+    pub action_timestamp: String,
+    pub performed_by: String,
+    pub client_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClientDeleteResponse {
+    pub message: String,
+    pub metadata: ActionMetadata,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClientUpdateResponse {
+    pub message: String,
+    pub metadata: ActionMetadata,
+}
