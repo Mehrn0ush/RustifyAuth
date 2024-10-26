@@ -63,16 +63,26 @@ jobs:
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
-        # Add the actual migration commands here or run a script if migrations are stored in a file
-        # For example, if using Diesel or SQLx, replace with the correct command:
-        echo "CREATE TABLE IF NOT EXISTS tokens (
-                  access_token VARCHAR PRIMARY KEY,
-                  refresh_token VARCHAR,
-                  expires_at TIMESTAMP,
-                  scope VARCHAR,
-                  client_id VARCHAR REFERENCES clients(client_id),
-                  token_type VARCHAR DEFAULT 'Bearer'
-               );" | psql $DATABASE_URL
+        # Create necessary tables for testing
+        psql $DATABASE_URL <<EOF
+          CREATE TABLE IF NOT EXISTS clients (
+            client_id VARCHAR PRIMARY KEY,
+            secret VARCHAR NOT NULL,
+            redirect_uris JSONB NOT NULL,
+            grant_types JSONB,
+            response_types JSONB,
+            software_statement TEXT
+          );
+          
+          CREATE TABLE IF NOT EXISTS tokens (
+            access_token VARCHAR PRIMARY KEY,
+            refresh_token VARCHAR,
+            expires_at TIMESTAMP,
+            scope VARCHAR,
+            client_id VARCHAR REFERENCES clients(client_id),
+            token_type VARCHAR DEFAULT 'Bearer'
+          );
+        EOF
         echo "Migrations completed"
 
     - name: Run cargo test
