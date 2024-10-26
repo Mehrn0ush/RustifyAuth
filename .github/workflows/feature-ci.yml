@@ -61,12 +61,10 @@ jobs:
         done
         sleep 5  # Extra wait time for stability
 
-    - name: Validate environment
+    - name: Verify PostgreSQL Connection
       run: |
         echo "PostgreSQL Connection Info:"
         psql -h localhost -p 5432 -U rustify_auth -c '\conninfo'
-        echo "Current Tables:"
-        psql -h localhost -p 5432 -U rustify_auth -d rustify_auth_db -c '\dt'
 
     - name: Run migrations with schema setup
       env:
@@ -92,7 +90,7 @@ jobs:
             client_id VARCHAR REFERENCES clients(client_id) ON DELETE CASCADE,
             token_type VARCHAR DEFAULT 'Bearer'
           );
-        EOF
+EOF
         echo "Migrations completed"
 
     - name: Verify tables and sample data
