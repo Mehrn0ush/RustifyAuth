@@ -51,7 +51,9 @@ jobs:
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
       with:
+        profile: minimal
         toolchain: stable
+        override: true
 
     - name: Wait for PostgreSQL to be ready
       run: |
@@ -59,7 +61,7 @@ jobs:
           echo "Waiting for PostgreSQL to be ready..."
           sleep 2
         done
-        sleep 5  # Extra wait time for stability
+        sleep 5
 
     - name: Verify PostgreSQL Connection
       run: |
@@ -90,16 +92,23 @@ jobs:
             client_id VARCHAR REFERENCES clients(client_id) ON DELETE CASCADE,
             token_type VARCHAR DEFAULT 'Bearer'
           );
-        EOF
+EOF
         echo "Migrations completed"
 
-    - name: Verify tables and permissions
+    - name: Verify tables and sample data
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
-        echo "Verifying tables..."
+        echo "Verifying tables and displaying sample data..."
         psql $DATABASE_URL -c "\dt"  # Check if tables exist
-        echo "Checking permissions for rustify_auth..."
+        psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;" || echo "No data in clients table"
+        psql $DATABASE_URL -c "SELECT * FROM tokens LIMIT 1;" || echo "No data in tokens table"
+
+    - name: Grant all privileges to ensure permissions
+      env:
+        DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
+      run: |
+        echo "Granting all privileges to ensure permissions..."
         psql $DATABASE_URL -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rustify_auth;"
 
     - name: Run cargo test with backtrace enabled
@@ -109,7 +118,7 @@ jobs:
         JWT_SECRET: test_secret
         RUST_BACKTRACE: full
         RUST_LOG: debug
-      run: RUST_BACKTRACE=1 cargo test -- --test-threads=1
+      run: cargo test -- --test-threads=1
 
   format:
     runs-on: ubuntu-latest
@@ -136,6 +145,7 @@ jobs:
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
       with:
+        profile: minimal
         toolchain: stable
 
     - name: Check code formatting
@@ -166,6 +176,7 @@ jobs:
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
       with:
+        profile: minimal
         toolchain: stable
 
     - name: Run linter
