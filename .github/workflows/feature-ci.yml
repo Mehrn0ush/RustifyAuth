@@ -59,8 +59,7 @@ jobs:
           echo "Waiting for PostgreSQL to be ready..."
           sleep 2
         done
-        sleep 10  # Extra wait time for stability
-        echo "PostgreSQL is ready and accepting connections."
+        sleep 5  # Extra wait time for stability
 
     - name: Verify PostgreSQL Connection
       run: |
@@ -72,7 +71,7 @@ jobs:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
         echo "Running migrations with schema setup..."
-        psql $DATABASE_URL <<EOF
+        psql $DATABASE_URL <<-EOF
           DROP TABLE IF EXISTS tokens CASCADE;
           DROP TABLE IF EXISTS clients CASCADE;
           CREATE TABLE IF NOT EXISTS clients (
@@ -91,23 +90,17 @@ jobs:
             client_id VARCHAR REFERENCES clients(client_id) ON DELETE CASCADE,
             token_type VARCHAR DEFAULT 'Bearer'
           );
+        EOF
+        echo "Migrations completed"
 
-    - name: Verify tables and sample data
+    - name: Verify tables and permissions
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
-        echo "Verifying tables and displaying sample data..."
+        echo "Verifying tables..."
         psql $DATABASE_URL -c "\dt"  # Check if tables exist
-        psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;" || echo "No data in clients table"
-        psql $DATABASE_URL -c "SELECT * FROM tokens LIMIT 1;" || echo "No data in tokens table"
-
-    - name: Check PostgreSQL User Permissions
-      env:
-        DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
-      run: |
-        echo "Checking PostgreSQL user permissions..."
+        echo "Checking permissions for rustify_auth..."
         psql $DATABASE_URL -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rustify_auth;"
-        psql $DATABASE_URL -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rustify_auth;"
 
     - name: Run cargo test with backtrace enabled
       env:
