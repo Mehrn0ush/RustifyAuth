@@ -71,7 +71,7 @@ jobs:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
         echo "Running migrations with schema setup..."
-        psql $DATABASE_URL <<-EOF
+        psql $DATABASE_URL <<EOF
           DROP TABLE IF EXISTS tokens CASCADE;
           DROP TABLE IF EXISTS clients CASCADE;
           CREATE TABLE IF NOT EXISTS clients (
