@@ -83,7 +83,7 @@ jobs:
             token_type VARCHAR DEFAULT 'Bearer'
           );
         EOF
-        echo "Migrations completed"
+        echo "Migrations completed successfully"
 
     - name: Verify table setup (debugging step)
       env:
@@ -92,11 +92,12 @@ jobs:
         echo "Checking tables in PostgreSQL..."
         psql $DATABASE_URL -c "\dt"
 
-    - name: Run cargo test
+    - name: Run cargo test with backtrace enabled
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
         REDIS_URL: redis://localhost:6379
         JWT_SECRET: test_secret
+        RUST_BACKTRACE: 1
       run: cargo test -- --test-threads=1
 
   format:
