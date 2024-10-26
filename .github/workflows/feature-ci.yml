@@ -21,7 +21,7 @@ jobs:
           POSTGRES_USER: rustify_auth
           POSTGRES_PASSWORD: password
           POSTGRES_DB: rustify_auth_db
-          POSTGRES_HOST_AUTH_METHOD: trust  # Ensure CI accepts local connections
+          POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd "pg_isready -U rustify_auth"
           --health-interval 10s
@@ -55,15 +55,16 @@ jobs:
 
     - name: Verify PostgreSQL Connection
       run: |
-        echo "Verifying PostgreSQL connection and environment variables..."
+        echo "Verifying PostgreSQL connection..."
         psql -h localhost -p 5432 -U rustify_auth -c '\conninfo'
 
     - name: Wait for PostgreSQL to be ready
       run: |
         until pg_isready -h localhost -p 5432 -U rustify_auth; do
-          sleep 1
+          echo "Waiting for PostgreSQL to be ready..."
+          sleep 2
         done
-        sleep 5  # Additional wait time for stability
+        sleep 5  # Extra wait time for stability
 
     - name: Run migrations
       env:
@@ -79,7 +80,6 @@ jobs:
             response_types JSONB,
             software_statement TEXT
           );
-
           CREATE TABLE IF NOT EXISTS tokens (
             access_token VARCHAR PRIMARY KEY,
             refresh_token VARCHAR,
@@ -89,14 +89,15 @@ jobs:
             token_type VARCHAR DEFAULT 'Bearer'
           );
         EOF
-        echo "Migrations completed successfully"
+        echo "Migrations completed"
 
-    - name: Verify table setup (debugging step)
+    - name: Verify tables
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
-        echo "Checking tables in PostgreSQL..."
-        psql $DATABASE_URL -c "\dt"  # Ensure tables are created
+        echo "Verifying tables..."
+        psql $DATABASE_URL -c "\dt"
+        psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;"
 
     - name: Run cargo test with backtrace enabled
       env:
