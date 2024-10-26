@@ -21,6 +21,7 @@ jobs:
           POSTGRES_USER: rustify_auth
           POSTGRES_PASSWORD: password
           POSTGRES_DB: rustify_auth_db
+          POSTGRES_HOST_AUTH_METHOD: trust  # Ensures local connections are accepted
         options: >-
           --health-cmd "pg_isready -U rustify_auth"
           --health-interval 10s
@@ -52,12 +53,17 @@ jobs:
       with:
         toolchain: stable
 
+    - name: Verify PostgreSQL Connection
+      run: |
+        echo "Verifying PostgreSQL connection and environment variables..."
+        psql -h localhost -p 5432 -U rustify_auth -c '\conninfo'
+
     - name: Wait for PostgreSQL to be ready
       run: |
         until pg_isready -h localhost -p 5432 -U rustify_auth; do
           sleep 1
         done
-        sleep 5  # Additional wait to ensure readiness
+        sleep 5  # Additional wait time for stability
 
     - name: Run migrations
       env:
@@ -91,6 +97,7 @@ jobs:
       run: |
         echo "Checking tables in PostgreSQL..."
         psql $DATABASE_URL -c "\dt"
+        psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;"  # Optional to check data presence
 
     - name: Run cargo test with backtrace enabled
       env:
