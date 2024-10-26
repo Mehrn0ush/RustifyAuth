@@ -57,13 +57,13 @@ jobs:
         until pg_isready -h localhost -p 5432 -U rustify_auth; do
           sleep 1
         done
-        sleep 5  # Extra wait to ensure the service is fully ready
+        sleep 5  # Additional wait to ensure readiness
 
     - name: Run migrations
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
-        # Create necessary tables for testing
+        echo "Running migrations..."
         psql $DATABASE_URL <<EOF
           CREATE TABLE IF NOT EXISTS clients (
             client_id VARCHAR PRIMARY KEY,
@@ -83,13 +83,21 @@ jobs:
             token_type VARCHAR DEFAULT 'Bearer'
           );
         EOF
-        echo "Migrations completed"
+        echo "Migrations completed successfully"
 
-    - name: Run cargo test
+    - name: Verify table setup (debugging step)
+      env:
+        DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
+      run: |
+        echo "Checking tables in PostgreSQL..."
+        psql $DATABASE_URL -c "\dt"
+
+    - name: Run cargo test with backtrace enabled
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
         REDIS_URL: redis://localhost:6379
         JWT_SECRET: test_secret
+        RUST_BACKTRACE: 1
       run: cargo test -- --test-threads=1
 
   format:
