@@ -79,7 +79,7 @@ jobs:
             response_types JSONB,
             software_statement TEXT
           );
-          
+
           CREATE TABLE IF NOT EXISTS tokens (
             access_token VARCHAR PRIMARY KEY,
             refresh_token VARCHAR,
@@ -96,8 +96,7 @@ jobs:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
         echo "Checking tables in PostgreSQL..."
-        psql $DATABASE_URL -c "\dt"
-        psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;"  # Optional to check data presence
+        psql $DATABASE_URL -c "\dt"  # Ensure tables are created
 
     - name: Run cargo test with backtrace enabled
       env:
@@ -105,7 +104,7 @@ jobs:
         REDIS_URL: redis://localhost:6379
         JWT_SECRET: test_secret
         RUST_BACKTRACE: full
-        RUST_LOG: debug  
+        RUST_LOG: debug
       run: cargo test -- --test-threads=1
 
   format:
