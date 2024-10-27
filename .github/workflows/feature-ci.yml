@@ -21,13 +21,11 @@ jobs:
           POSTGRES_USER: rustify_auth
           POSTGRES_PASSWORD: password
           POSTGRES_DB: rustify_auth_db
-          POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd "pg_isready -U rustify_auth"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
-
+          --health-retries 10  # Increased retries
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -93,12 +91,13 @@ jobs:
             token_type VARCHAR DEFAULT 'Bearer'
           );
         EOF
+        
     - name: Verify tables and sample data
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
       run: |
         echo "Verifying tables and displaying sample data..."
-        psql $DATABASE_URL -c "\dt"  # Check if tables exist
+        psql $DATABASE_URL -c "\dt"
         psql $DATABASE_URL -c "SELECT * FROM clients LIMIT 1;" || echo "No data in clients table"
         psql $DATABASE_URL -c "SELECT * FROM tokens LIMIT 1;" || echo "No data in tokens table"
 
