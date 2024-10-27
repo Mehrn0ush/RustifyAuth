@@ -92,7 +92,7 @@ jobs:
             client_id VARCHAR REFERENCES clients(client_id) ON DELETE CASCADE,
             token_type VARCHAR DEFAULT 'Bearer'
           );
-
+        EOF
     - name: Verify tables and sample data
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
