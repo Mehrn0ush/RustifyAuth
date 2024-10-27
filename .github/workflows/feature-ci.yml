@@ -92,8 +92,6 @@ jobs:
             client_id VARCHAR REFERENCES clients(client_id) ON DELETE CASCADE,
             token_type VARCHAR DEFAULT 'Bearer'
           );
-EOF
-        echo "Migrations completed"
 
     - name: Verify tables and sample data
       env:
