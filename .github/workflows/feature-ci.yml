@@ -59,7 +59,9 @@ jobs:
           echo "Waiting for PostgreSQL to be ready..."
           sleep 2
         done
-        sleep 10  # Increased delay to ensure readiness
+        echo "PostgreSQL is ready!"
+        sleep 15  # Additional sleep to ensure PostgreSQL readiness
+
 
     - name: Verify PostgreSQL Connection
       run: |
