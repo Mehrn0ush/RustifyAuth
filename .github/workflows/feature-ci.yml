@@ -59,7 +59,7 @@ jobs:
           echo "Waiting for PostgreSQL to be ready..."
           sleep 2
         done
-        sleep 5
+        sleep 10  # Increased delay to ensure readiness
 
     - name: Verify PostgreSQL Connection
       run: |
@@ -91,6 +91,7 @@ jobs:
             token_type VARCHAR DEFAULT 'Bearer'
           );
         EOF
+
     - name: Verify Database Schema
       env:
         DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
@@ -115,6 +116,13 @@ jobs:
       run: |
         echo "Granting all privileges to ensure permissions..."
         psql $DATABASE_URL -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rustify_auth;"
+
+    - name: Verify Permissions
+      env:
+        DATABASE_URL: postgres://rustify_auth:password@localhost:5432/rustify_auth_db
+      run: |
+        echo "Verifying database permissions..."
+        psql $DATABASE_URL -c "SELECT table_catalog, table_schema, table_name, privilege_type FROM information_schema.role_table_grants WHERE grantee = 'rustify_auth';"
 
     - name: Run cargo test with backtrace enabled
       env:
