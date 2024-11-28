@@ -116,3 +116,25 @@ async fn main1() -> Result<(), sqlx::Error> {
 
     Ok(())
 }
+
+/*
+// lib.rs
+use crate::config::OidcConfig;
+
+pub struct RustifyAuth {
+    pub config: OidcConfig,
+    // Other fields like services, storage, etc.
+}
+
+impl RustifyAuth {
+    pub fn new(config: OidcConfig) -> Self {
+        RustifyAuth {
+            config,
+            // Initialize other dependencies
+        }
+    }
+
+    // Other methods
+}
+
+*/
