@@ -2,13 +2,38 @@ use chrono::{Duration, Utc};
 use rustify_auth::storage::postgres::PostgresBackend;
 use rustify_auth::storage::AsyncStorageBackend;
 use rustify_auth::storage::TokenData;
+use serde_json::json;
+use tokio_postgres::NoTls;
 
 #[tokio::test]
 async fn test_postgres_token_storage() {
+    let database_url = "postgres://rustify_auth:password@localhost:5432/rustify_auth_db";
+
+    let (client, connection) = tokio_postgres::connect(database_url, NoTls)
+        .await
+        .expect("Failed to connect to Postgres for test setup");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    client
+        .execute("DELETE FROM tokens WHERE client_id = $1", &[&"client123"])
+        .await
+        .expect("Failed to clean up tokens before test");
+    client
+        .execute("DELETE FROM clients WHERE client_id = $1", &[&"client123"])
+        .await
+        .expect("Failed to clean up client before test");
+    client
+        .execute(
+            "INSERT INTO clients (client_id, secret, redirect_uris) VALUES ($1, $2, $3::jsonb)",
+            &[&"client123", &"test_secret", &json!([]).to_string()],
+        )
+        .await
+        .expect("Failed to insert client required by foreign key");
+
     // Initialize the backend connection
-    let backend =
-        PostgresBackend::new("postgres://rustify_auth:password@localhost:5432/rustify_auth_db")
-            .expect("Failed to connect to Postgres");
+    let backend = PostgresBackend::new(database_url).expect("Failed to connect to Postgres");
 
     // Define token data for testing
     let token_data = TokenData {
@@ -78,4 +103,9 @@ async fn test_postgres_token_storage() {
         deleted_token.unwrap().is_none(),
         "Token still exists in database after deletion"
     );
+
+    client
+        .execute("DELETE FROM clients WHERE client_id = $1", &[&"client123"])
+        .await
+        .expect("Failed to clean up client after test");
 }
