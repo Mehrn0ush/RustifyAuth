@@ -233,12 +233,10 @@ impl RedisTokenStore {
             poisoned.into_inner()
         });
 
-        let _: () = conn
-            .set_ex(token.clone(), "revoked", ttl)
-            .map_err(|e| {
-                eprintln!("Failed to store revoked token {} in Redis: {:?}", token, e);
-                TokenError::InternalError
-            })?;
+        let _: () = conn.set_ex(token.clone(), "revoked", ttl).map_err(|e| {
+            eprintln!("Failed to store revoked token {} in Redis: {:?}", token, e);
+            TokenError::InternalError
+        })?;
 
         println!("Revoked token in Redis: {}, TTL: {}", token, ttl);
         Ok(())
