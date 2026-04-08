@@ -9,10 +9,10 @@ pub struct LoginRequest {
     password: String,
 }
 
-pub async fn login<A: UserAuthenticator, S: SessionManager>(
+pub async fn login(
     form: web::Form<LoginRequest>,
-    authenticator: web::Data<Arc<A>>,
-    session_manager: web::Data<Arc<S>>,
+    authenticator: web::Data<Arc<dyn UserAuthenticator + Send + Sync>>,
+    session_manager: web::Data<Arc<dyn SessionManager + Send + Sync>>,
 ) -> Result<HttpResponse> {
     // Authenticate the user
     match authenticator
@@ -92,17 +92,14 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_login_success() {
-        let authenticator = Arc::new(MockAuthenticator);
-        let session_manager = Arc::new(MockSessionManager);
+        let authenticator: Arc<dyn UserAuthenticator + Send + Sync> = Arc::new(MockAuthenticator);
+        let session_manager: Arc<dyn SessionManager + Send + Sync> = Arc::new(MockSessionManager);
 
         let mut app = test::init_service(
             App::new()
                 .app_data(web::Data::new(authenticator.clone()))
                 .app_data(web::Data::new(session_manager.clone()))
-                .service(
-                    web::resource("/login")
-                        .route(web::post().to(login::<MockAuthenticator, MockSessionManager>)),
-                ),
+                .service(web::resource("/login").route(web::post().to(login))),
         )
         .await;
 
@@ -129,17 +126,14 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_login_invalid_credentials() {
-        let authenticator = Arc::new(MockAuthenticator);
-        let session_manager = Arc::new(MockSessionManager);
+        let authenticator: Arc<dyn UserAuthenticator + Send + Sync> = Arc::new(MockAuthenticator);
+        let session_manager: Arc<dyn SessionManager + Send + Sync> = Arc::new(MockSessionManager);
 
         let mut app = test::init_service(
             App::new()
                 .app_data(web::Data::new(authenticator.clone()))
                 .app_data(web::Data::new(session_manager.clone()))
-                .service(
-                    web::resource("/login")
-                        .route(web::post().to(login::<MockAuthenticator, MockSessionManager>)),
-                ),
+                .service(web::resource("/login").route(web::post().to(login))),
         )
         .await;
 
@@ -160,17 +154,14 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_login_internal_error() {
-        let authenticator = Arc::new(MockAuthenticator);
-        let session_manager = Arc::new(MockSessionManager);
+        let authenticator: Arc<dyn UserAuthenticator + Send + Sync> = Arc::new(MockAuthenticator);
+        let session_manager: Arc<dyn SessionManager + Send + Sync> = Arc::new(MockSessionManager);
 
         let mut app = test::init_service(
             App::new()
                 .app_data(web::Data::new(authenticator.clone()))
                 .app_data(web::Data::new(session_manager.clone()))
-                .service(
-                    web::resource("/login")
-                        .route(web::post().to(login::<MockAuthenticator, MockSessionManager>)),
-                ),
+                .service(web::resource("/login").route(web::post().to(login))),
         )
         .await;
 

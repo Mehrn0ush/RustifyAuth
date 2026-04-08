@@ -1,23 +1,20 @@
 pub mod auth;
 pub mod device_flow;
 pub mod users;
-use crate::authentication::{SessionManager, UserAuthenticator};
+use crate::core::token::InMemoryTokenStore;
 use crate::endpoints::authorize::authorize;
 use crate::endpoints::delete::delete_client_handler;
 use crate::endpoints::introspection::introspect_token;
+use crate::endpoints::login::login;
 use crate::endpoints::register::register_client_handler;
 use crate::endpoints::revoke::revoke_token_endpoint;
 use crate::endpoints::token::token_endpoint;
 use crate::endpoints::update::update_client_handler;
-use crate::InMemoryTokenStore;
-use actix_web::{web, HttpResponse};
+use actix_web::web;
 
-pub fn init_routes<A, S>(cfg: &mut web::ServiceConfig)
-where
-    A: 'static + UserAuthenticator,
-    S: 'static + SessionManager,
-{
+pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/authorize").route(web::get().to(authorize)));
+    cfg.service(web::resource("/login").route(web::post().to(login)));
     cfg.service(web::resource("/device/code").route(web::post().to(device_flow::device_authorize)));
     cfg.service(web::resource("/device/token").route(web::post().to(device_flow::device_token)));
 

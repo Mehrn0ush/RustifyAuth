@@ -29,11 +29,13 @@ cargo build
 ```
 
 ### Running the Server
-Once you've built the project, you can start the server by running:
+The repository now includes a runnable Actix binary for local development. It starts a mock-backed authorization server on `127.0.0.1:8080`:
 
 ```bash
 cargo run
 ```
+
+This development server wires the in-memory token store, mock authenticator, mock session manager, and default OIDC flow configuration. It is intended for local testing and examples, not production deployment.
 
 ### 🔧 Running Tests
 
@@ -44,15 +46,17 @@ cargo test
 ```
 
 ### Notes
-For testing purposes, the repository includes client_cert.pem, client_key.pem, custom_cert.pem, and custom_key.pem. These files are used for the Dynamic Client Registration as per RFC 7591 and are provided for local development and testing only.
+For testing purposes, the repository includes `client_cert.pem`, `client_key.pem`, `custom_cert.pem`, and `custom_key.pem`. These files are used for Dynamic Client Registration per RFC 7591 and are provided for local development and testing only.
 
 Note: The keys and certificates in this repository are not intended for production use. Please generate your own keys and certificates if you intend to use this in a live environment.
 
-Public and Private Key Files
-client_cert.pem: The client certificate used during the registration process.
-client_key.pem: The private key corresponding to the client certificate.
-custom_cert.pem: A custom certificate used for encrypting data.
-custom_key.pem: The private key corresponding to the custom certificate.
+Public and private key files:
+
+- `client_cert.pem`: client certificate used during registration
+- `client_key.pem`: private key for `client_cert.pem`
+- `custom_cert.pem`: custom certificate used for encryption tests
+- `custom_key.pem`: private key for `custom_cert.pem`
+
 These keys and certificates are self-signed and intended solely for testing.
 
 The custom_cert.srl file is a serial number file used by OpenSSL when generating certificates. It keeps track of the serial numbers of the certificates that have been signed by the Certificate Authority (CA).
@@ -90,10 +94,11 @@ openssl x509 -req -days 365 -in custom.csr -signkey custom_key.pem -out custom_c
 ### Using the Keys for Testing
 These keys are used in the Dynamic Client Registration process for securing communications and authenticating clients. In your local testing environment, you can simply point to these keys in the relevant configuration files or environment variables.
 
-### Example:
+### Example
 
-client_key.pem and client_cert.pem will be used during client registration.
-custom_key.pem and custom_cert.pem can be used for other secure communication scenarios.
+- `client_key.pem` and `client_cert.pem` are used during client registration.
+- `custom_key.pem` and `custom_cert.pem` can be used for other secure communication scenarios.
+
 Feel free to generate your own certificates if you prefer not to use the provided ones for testing.
 
 Security Notice
