@@ -31,3 +31,23 @@ impl OAuthConfig {
         }
     }
 }
+
+// OIDC configurable
+#[derive(Debug, Clone)]
+pub struct OidcConfig {
+    pub authorization_code_flow: bool,
+    pub implicit_flow: bool,
+    pub hybrid_flow: bool,
+    pub ciba_flow: bool,
+}
+
+impl Default for OidcConfig {
+    fn default() -> Self {
+        OidcConfig {
+            authorization_code_flow: true, // Enabled by default
+            implicit_flow: false,
+            hybrid_flow: false,
+            ciba_flow: false,
+        }
+    }
+}

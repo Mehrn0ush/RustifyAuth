@@ -208,7 +208,7 @@ impl TokenStore for RedisTokenStore {
         let result: Option<String> = conn.get(token).map_err(|_| TokenError::InternalError)?;
 
         if result.is_some() {
-            conn.del(token).map_err(|_| TokenError::InternalError)?;
+            let _: usize = conn.del(token).map_err(|_| TokenError::InternalError)?;
             println!("Revoked refresh token in Redis: {}", token);
             Ok(())
         } else {
@@ -233,7 +233,7 @@ impl RedisTokenStore {
             poisoned.into_inner()
         });
 
-        conn.set_ex(token.clone(), "revoked", ttl).map_err(|e| {
+        let _: () = conn.set_ex(token.clone(), "revoked", ttl).map_err(|e| {
             eprintln!("Failed to store revoked token {} in Redis: {:?}", token, e);
             TokenError::InternalError
         })?;
